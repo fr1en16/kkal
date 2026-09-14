@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>kkal</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <div class="topbar">
+    <button class="icon-btn" id="prevDay">‹</button>
+    <div class="date" id="dateLabel">Сегодня</div>
+    <button class="icon-btn" id="nextDay">›</button>
+  </div>
+
+  <div class="summary">
+    <div class="kcal-row">
+      <span id="kcalEaten">0</span><span class="muted">/</span><span id="kcalGoal" class="muted">2000</span>
+      <span class="unit">ккал</span>
+    </div>
+    <div class="kcal-left" id="kcalLeft">Осталось 0 ккал</div>
+    <div class="macros">
+      <span>Б <b id="pEaten">0</b>/<span id="pGoal">0</span></span>
+      <span>Ж <b id="fEaten">0</b>/<span id="fGoal">0</span></span>
+      <span>У <b id="cEaten">0</b>/<span id="cGoal">0</span></span>
+    </div>
+    <div class="bar"><div class="bar-fill" id="kcalBar"></div></div>
+  </div>
+
+  <div id="diaryView">
+    <div id="meals"></div>
+  </div>
+
+  <div id="weightView" hidden>
+    <div class="weight-header">Вес</div>
+    <div class="weight-summary">
+      <div class="weight-current"><span id="weightCurrent">—</span><span class="unit">кг</span></div>
+      <div class="weight-delta" id="weightDelta"></div>
+    </div>
+    <svg id="weightChart" class="weight-chart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+    <div id="weightPhotos" class="weight-photos"></div>
+    <div id="weightList"></div>
+  </div>
+
+  <div id="productsView" hidden>
+    <div class="weight-header">Продукты</div>
+    <input class="field products-search" id="productsSearch" placeholder="Поиск продукта" autocomplete="off" />
+    <div id="productsList"></div>
+  </div>
+
+  <div id="chatView" hidden>
+    <div class="chat-meal-row">
+      <select class="field chat-meal-select" id="chatMeal">
+        <option value="breakfast">Завтрак</option>
+        <option value="lunch">Обед</option>
+        <option value="dinner">Ужин</option>
+        <option value="snack">Перекус</option>
+      </select>
+    </div>
+    <div id="chatMessages" class="chat-messages"></div>
+  </div>
+
+</div>
+
+<div class="chat-input-bar" id="chatInputBar" hidden>
+  <img id="chatPhotoThumb" class="chat-photo-thumb" hidden />
+  <button class="icon-btn" id="chatPhotoBtn">📷</button>
+  <input type="file" id="chatPhotoInput" accept="image/*" capture="environment" hidden />
+  <input class="field chat-text-input" id="chatText" placeholder="Напишите, что съели…" autocomplete="off" />
+  <button class="chat-send-btn" id="chatSend">➤</button>
+</div>
+
+<button class="icon-btn settings-btn settings-fab" id="openSettings">⚙</button>
+
+<div class="tabbar">
+  <button class="tab-btn active" id="tabDiary" data-tab="diary">Дневник</button>
+  <button class="tab-btn" id="tabWeight" data-tab="weight">Вес</button>
+  <button class="tab-btn" id="tabProducts" data-tab="products">Продукты</button>
+  <button class="tab-btn" id="tabChat" data-tab="chat">Чат</button>
+</div>
+
+<button class="fab" id="fabAdd">+</button>
+
+<!-- Add entry modal -->
+<div class="overlay" id="addOverlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <span id="addMealLabel">Приём пищи</span>
+      <button class="text-btn" id="closeAdd">✕</button>
+    </div>
+
+    <button class="photo-btn" id="photoBtn">📷 Распознать по фото</button>
+    <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
+    <div id="aiStatus" class="ai-status" hidden></div>
+
+    <div id="aiResults" class="ai-results" hidden></div>
+
+    <div class="divider">из базы продуктов</div>
+    <input class="field" id="productPick" placeholder="Найти продукт…" autocomplete="off" />
+    <div id="productPickResults" class="ai-results" hidden></div>
+    <div id="productPicked" class="product-picked" hidden></div>
+
+    <div class="divider">или вручную</div>
+
+    <input class="field" id="fName" list="recentList" placeholder="Название" autocomplete="off" />
+    <datalist id="recentList"></datalist>
+    <div class="row">
+      <input class="field" id="fGrams" type="number" inputmode="decimal" placeholder="Граммы" />
+      <input class="field" id="fKcal" type="number" inputmode="decimal" placeholder="Ккал" />
+    </div>
+    <div class="row">
+      <input class="field" id="fProtein" type="number" inputmode="decimal" placeholder="Белки" />
+      <input class="field" id="fFat" type="number" inputmode="decimal" placeholder="Жиры" />
+      <input class="field" id="fCarbs" type="number" inputmode="decimal" placeholder="Углеводы" />
+    </div>
+    <button class="primary-btn" id="saveEntry">Добавить</button>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="overlay" id="settingsOverlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <span>Настройки</span>
+      <button class="text-btn" id="closeSettings">✕</button>
+    </div>
+
+    <div class="section-label">Дневная норма</div>
+    <div class="row">
+      <input class="field" id="sGoalKcal" type="number" placeholder="Ккал" />
+    </div>
+    <div class="row">
+      <input class="field" id="sGoalProtein" type="number" placeholder="Белки г" />
+      <input class="field" id="sGoalFat" type="number" placeholder="Жиры г" />
+      <input class="field" id="sGoalCarbs" type="number" placeholder="Углеводы г" />
+    </div>
+
+    <div class="section-label">ИИ-помощник (распознавание фото)</div>
+    <div class="ai-provider-info" id="aiProviderInfo">—</div>
+
+    <button class="primary-btn" id="saveSettings">Сохранить</button>
+  </div>
+</div>
+
+<!-- Add weight modal -->
+<div class="overlay" id="weightOverlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <span>Замер веса</span>
+      <button class="text-btn" id="closeWeight">✕</button>
+    </div>
+
+    <input class="field" id="wDate" type="date" />
+    <input class="field" id="wWeight" type="number" inputmode="decimal" step="0.1" placeholder="Вес, кг" />
+
+    <button class="photo-btn" id="wPhotoBtn">📷 Добавить фото</button>
+    <input type="file" id="wPhotoInput" accept="image/*" capture="environment" hidden />
+    <img id="wPhotoPreview" class="weight-photo-preview" hidden />
+
+    <button class="primary-btn" id="saveWeight">Добавить</button>
+  </div>
+</div>
+
+<!-- Add product modal -->
+<div class="overlay" id="productOverlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <span>Новый продукт</span>
+      <button class="text-btn" id="closeProduct">✕</button>
+    </div>
+
+    <button class="photo-btn" id="productPhotoBtn">📷 Распознать упаковку</button>
+    <input type="file" id="productPhotoInput" accept="image/*" capture="environment" hidden />
+    <div id="productAiStatus" class="ai-status" hidden></div>
+
+    <div class="divider">данные на 100 г</div>
+
+    <input class="field" id="pName" placeholder="Название" autocomplete="off" />
+    <input class="field" id="pKcal" type="number" inputmode="decimal" placeholder="Ккал на 100г" />
+    <div class="row">
+      <input class="field" id="pProtein" type="number" inputmode="decimal" placeholder="Белки" />
+      <input class="field" id="pFat" type="number" inputmode="decimal" placeholder="Жиры" />
+      <input class="field" id="pCarbs" type="number" inputmode="decimal" placeholder="Углеводы" />
+    </div>
+    <button class="primary-btn" id="saveProduct">Сохранить продукт</button>
+  </div>
+</div>
+
+<!-- Photo lightbox -->
+<div class="overlay lightbox-overlay" id="lightboxOverlay">
+  <img id="lightboxImg" class="lightbox-img" />
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
