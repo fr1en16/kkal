@@ -16,9 +16,15 @@ let chatHistory = [];
 let chatPhotoFile = null;
 let chatSending = false;
 
+function toDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function todayStr() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return toDateStr(new Date());
 }
 
 function fmtDateLabel(dateStr) {
@@ -375,7 +381,7 @@ async function saveSettings() {
 function addDays(dateStr, n) {
   const d = new Date(dateStr + 'T00:00:00');
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return toDateStr(d);
 }
 
 function switchTab(tab) {
