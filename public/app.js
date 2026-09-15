@@ -41,6 +41,10 @@ function round(n) {
   return Math.round((n || 0) * 10) / 10;
 }
 
+function formatNum(n) {
+  return (Number(n) || 0).toLocaleString('ru-RU');
+}
+
 async function api(path, opts) {
   const res = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -53,19 +57,115 @@ async function api(path, opts) {
   return res.json();
 }
 
+function getStorage(key) {
+  try {
+    const raw = localStorage.getItem('kkal_' + key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStorage(key, val) {
+  try {
+    localStorage.setItem('kkal_' + key, JSON.stringify(val));
+  } catch {}
+}
+
+function applySettings(data) {
+  if (!data) return;
+  settings = data;
+  const kcalEl = document.getElementById('kcalGoal');
+  const pEl = document.getElementById('pGoal');
+  const fEl = document.getElementById('fGoal');
+  const cEl = document.getElementById('cGoal');
+  const stepsGoalEl = document.getElementById('diaryStepsGoal');
+
+  if (kcalEl) kcalEl.textContent = settings.goal_calories || 2000;
+  if (pEl) pEl.textContent = settings.goal_protein || 0;
+  if (fEl) fEl.textContent = settings.goal_fat || 0;
+  if (cEl) cEl.textContent = settings.goal_carbs || 0;
+  if (stepsGoalEl) stepsGoalEl.textContent = formatNum(settings.goal_steps || 10000);
+}
+
 async function loadSettings() {
-  settings = await api('/api/settings');
-  document.getElementById('kcalGoal').textContent = settings.goal_calories;
-  document.getElementById('pGoal').textContent = settings.goal_protein;
-  document.getElementById('fGoal').textContent = settings.goal_fat;
-  document.getElementById('cGoal').textContent = settings.goal_carbs;
+  const cached = getStorage('settings');
+  if (cached) applySettings(cached);
+  try {
+    const fresh = await api('/api/settings');
+    setStorage('settings', fresh);
+    applySettings(fresh);
+    return fresh;
+  } catch (err) {
+    console.error('Failed to load settings:', err);
+    return cached;
+  }
+}
+
+function applyDay(data) {
+  if (!data) return;
+  if (data.settings) applySettings(data.settings);
+  renderMeals(data.entries || []);
+  renderSummary(data.entries || []);
+  renderDaySteps(data.steps || null);
 }
 
 async function loadDay() {
   document.getElementById('dateLabel').textContent = fmtDateLabel(currentDate);
-  const entries = await api(`/api/entries?date=${currentDate}`);
-  renderMeals(entries);
-  renderSummary(entries);
+
+  // 1. Instant render from local cache (0ms)
+  const cacheKey = 'day_' + currentDate;
+  const cached = getStorage(cacheKey);
+  if (cached) {
+    applyDay(cached);
+  }
+
+  // 2. Fetch fresh batch data in one roundtrip
+  try {
+    const data = await api(`/api/day?date=${currentDate}`);
+    setStorage(cacheKey, data);
+    if (data.settings) setStorage('settings', data.settings);
+    applyDay(data);
+  } catch (err) {
+    console.error('Failed to load day data:', err);
+    if (!cached) {
+      try {
+        const [entries, dayStep] = await Promise.all([
+          api(`/api/entries?date=${currentDate}`),
+          api(`/api/steps?date=${currentDate}`),
+        ]);
+        applyDay({ entries, steps: dayStep, settings });
+      } catch (fallbackErr) {
+        console.error('Fallback error:', fallbackErr);
+      }
+    }
+  }
+}
+
+function renderDaySteps(dayStep) {
+  const steps = dayStep ? dayStep.steps : 0;
+  const goal = Number(settings && settings.goal_steps) || 10000;
+  const pct = Math.min(100, Math.round((steps / goal) * 100));
+  const countEl = document.getElementById('diaryStepsCount');
+  const goalEl = document.getElementById('diaryStepsGoal');
+  const barEl = document.getElementById('diaryStepsBar');
+  const distEl = document.getElementById('diaryStepsDist');
+  const kcalEl = document.getElementById('diaryStepsKcal');
+  const pctEl = document.getElementById('diaryStepsPct');
+  const editBtn = document.getElementById('diaryStepsEdit');
+
+  if (countEl) countEl.textContent = formatNum(steps);
+  if (goalEl) goalEl.textContent = formatNum(goal);
+  if (barEl) barEl.style.width = pct + '%';
+  const dist = dayStep && dayStep.distance_km != null ? dayStep.distance_km : Math.round(steps * 0.00075 * 10) / 10;
+  const kcal = dayStep && dayStep.calories != null ? dayStep.calories : Math.round(steps * 0.04);
+  if (distEl) distEl.textContent = Number(dist || 0).toFixed(1);
+  if (kcalEl) kcalEl.textContent = round(kcal);
+  if (pctEl) pctEl.textContent = pct + '%';
+  if (editBtn) {
+    editBtn.textContent = steps > 0 ? 'Изменить' : 'Записать';
+    editBtn.onclick = () => openStepsSheet(currentDate, steps || '');
+  }
 }
 
 function renderSummary(entries) {
@@ -355,6 +455,7 @@ function openSettingsSheet() {
   document.getElementById('sGoalProtein').value = settings.goal_protein;
   document.getElementById('sGoalFat').value = settings.goal_fat;
   document.getElementById('sGoalCarbs').value = settings.goal_carbs;
+  document.getElementById('sGoalSteps').value = settings.goal_steps || 10000;
   const providerLabel = PROVIDER_LABELS[settings.ai_provider] || settings.ai_provider;
   const envVar = PROVIDER_ENV_VAR[settings.ai_provider] || 'AI_API_KEY';
   document.getElementById('aiProviderInfo').textContent = settings.ai_configured
@@ -371,6 +472,7 @@ async function saveSettings() {
       goal_protein: document.getElementById('sGoalProtein').value || 0,
       goal_fat: document.getElementById('sGoalFat').value || 0,
       goal_carbs: document.getElementById('sGoalCarbs').value || 0,
+      goal_steps: document.getElementById('sGoalSteps').value || 10000,
     }),
   });
   document.getElementById('settingsOverlay').classList.remove('open');
@@ -387,17 +489,20 @@ function addDays(dateStr, n) {
 function switchTab(tab) {
   activeTab = tab;
   document.getElementById('diaryView').hidden = tab !== 'diary';
+  document.getElementById('stepsView').hidden = tab !== 'steps';
   document.getElementById('weightView').hidden = tab !== 'weight';
   document.getElementById('productsView').hidden = tab !== 'products';
   document.getElementById('chatView').hidden = tab !== 'chat';
   document.querySelector('.topbar').hidden = tab !== 'diary';
   document.querySelector('.summary').hidden = tab !== 'diary';
   document.getElementById('tabDiary').classList.toggle('active', tab === 'diary');
+  document.getElementById('tabSteps').classList.toggle('active', tab === 'steps');
   document.getElementById('tabWeight').classList.toggle('active', tab === 'weight');
   document.getElementById('tabProducts').classList.toggle('active', tab === 'products');
   document.getElementById('tabChat').classList.toggle('active', tab === 'chat');
   document.getElementById('chatInputBar').hidden = tab !== 'chat';
   document.getElementById('fabAdd').hidden = tab === 'chat';
+  if (tab === 'steps') loadSteps();
   if (tab === 'weight') loadWeight();
   if (tab === 'products') loadProducts();
   if (tab === 'chat') initChat();
@@ -666,12 +771,222 @@ async function handleProductPhoto(file) {
   }
 }
 
+async function loadSteps() {
+  const cached = getStorage('steps_list');
+  if (cached) {
+    renderStepsSummary(cached);
+    renderStepsChart(cached);
+    renderStepsList(cached);
+  }
+  try {
+    const rows = await api('/api/steps');
+    setStorage('steps_list', rows);
+    renderStepsSummary(rows);
+    renderStepsChart(rows);
+    renderStepsList(rows);
+  } catch (err) {
+    console.error('Failed to load steps:', err);
+  }
+}
+
+function renderStepsSummary(rows) {
+  const goal = Number(settings && settings.goal_steps) || 10000;
+  const todayEntry = rows.find((r) => r.date === todayStr());
+  const currentSteps = todayEntry ? todayEntry.steps : (rows.length > 0 ? rows[rows.length - 1].steps : 0);
+  const currentDist = todayEntry ? todayEntry.distance_km : (rows.length > 0 ? rows[rows.length - 1].distance_km : 0);
+  const currentKcal = todayEntry ? todayEntry.calories : (rows.length > 0 ? rows[rows.length - 1].calories : 0);
+
+  document.getElementById('stepsCurrent').textContent = formatNum(currentSteps);
+  const statusEl = document.getElementById('stepsTargetStatus');
+  const pct = Math.round((currentSteps / goal) * 100);
+  if (pct >= 100) {
+    statusEl.className = 'steps-target-status achieved';
+    statusEl.textContent = `Цель ${formatNum(goal)} выполнена! (${pct}%)`;
+  } else {
+    statusEl.className = 'steps-target-status';
+    statusEl.textContent = `Цель: ${formatNum(goal)} (${pct}%)`;
+  }
+
+  const totalKm = rows.reduce((s, r) => s + (r.distance_km || 0), 0);
+  const totalKcal = rows.reduce((s, r) => s + (r.calories || 0), 0);
+  const avgSteps = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.steps, 0) / rows.length) : 0;
+
+  document.getElementById('stepsStatDist').textContent = (totalKm || currentDist || 0).toFixed(1);
+  document.getElementById('stepsStatKcal').textContent = formatNum(Math.round(totalKcal || currentKcal || 0));
+  document.getElementById('stepsStatAvg').textContent = formatNum(avgSteps || currentSteps);
+}
+
+function renderStepsChart(rows) {
+  const svg = document.getElementById('stepsChart');
+  svg.innerHTML = '';
+  const goal = Number(settings && settings.goal_steps) || 10000;
+
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(toDateStr(d));
+  }
+
+  const stepMap = new Map();
+  for (const r of rows) stepMap.set(r.date, r);
+
+  const data = days.map((date) => {
+    const entry = stepMap.get(date);
+    return {
+      date,
+      steps: entry ? entry.steps : 0,
+      id: entry ? entry.id : null,
+    };
+  });
+
+  const maxSteps = Math.max(goal * 1.15, ...data.map((d) => d.steps));
+  const W = 320, H = 120, PAD_TOP = 16, PAD_BTM = 18, PAD_X = 10;
+  const chartH = H - PAD_TOP - PAD_BTM;
+  const numBars = data.length;
+  const slotW = (W - PAD_X * 2) / numBars;
+  const barW = Math.max(6, slotW - 5);
+  const ns = 'http://www.w3.org/2000/svg';
+
+  // Goal line
+  const goalY = PAD_TOP + chartH * (1 - goal / maxSteps);
+  const goalLine = document.createElementNS(ns, 'line');
+  goalLine.setAttribute('class', 'goal-line');
+  goalLine.setAttribute('x1', PAD_X);
+  goalLine.setAttribute('x2', W - PAD_X);
+  goalLine.setAttribute('y1', goalY);
+  goalLine.setAttribute('y2', goalY);
+  svg.appendChild(goalLine);
+
+  // Goal text label
+  const goalText = document.createElementNS(ns, 'text');
+  goalText.setAttribute('class', 'chart-label');
+  goalText.setAttribute('x', W - PAD_X - 2);
+  goalText.setAttribute('y', Math.max(10, goalY - 3));
+  goalText.setAttribute('text-anchor', 'end');
+  goalText.textContent = `Цель ${goal >= 1000 ? Math.round(goal / 1000) + 'k' : goal}`;
+  svg.appendChild(goalText);
+
+  // Draw bars
+  data.forEach((d, i) => {
+    const x = PAD_X + i * slotW + (slotW - barW) / 2;
+    const barH = d.steps > 0 ? Math.max(3, (d.steps / maxSteps) * chartH) : 0;
+    const y = PAD_TOP + chartH - barH;
+
+    if (barH > 0) {
+      const rect = document.createElementNS(ns, 'rect');
+      rect.setAttribute('class', `bar ${d.steps >= goal ? 'goal-met' : 'below-goal'}`);
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', barW);
+      rect.setAttribute('height', barH);
+      rect.setAttribute('rx', 2.5);
+      const title = document.createElementNS(ns, 'title');
+      title.textContent = `${d.date}: ${formatNum(d.steps)} шагов`;
+      rect.appendChild(title);
+      rect.onclick = () => openStepsSheet(d.date, d.steps || '');
+      svg.appendChild(rect);
+    }
+
+    if (i % 2 === 1 || i === numBars - 1) {
+      const dt = new Date(d.date + 'T00:00:00');
+      const text = document.createElementNS(ns, 'text');
+      text.setAttribute('class', 'chart-label');
+      text.setAttribute('x', x + barW / 2);
+      text.setAttribute('y', H - 4);
+      text.textContent = dt.getDate();
+      svg.appendChild(text);
+    }
+  });
+}
+
+function renderStepsList(rows) {
+  const container = document.getElementById('stepsList');
+  container.innerHTML = '';
+  const goal = Number(settings && settings.goal_steps) || 10000;
+  if (rows.length === 0) {
+    container.innerHTML = '<div class="empty-hint">Записей шагов пока нет</div>';
+    return;
+  }
+  const reversed = rows.slice().reverse();
+  for (const r of reversed) {
+    const row = document.createElement('div');
+    row.className = 'steps-entry';
+    const isAchieved = r.steps >= goal;
+    const dist = (r.distance_km || Math.round(r.steps * 0.00075 * 10) / 10).toFixed(1);
+    const kcal = round(r.calories || Math.round(r.steps * 0.04));
+
+    row.innerHTML = `
+      <div class="steps-entry-info">
+        <div class="steps-entry-date">${fmtDateLabel(r.date)} <span class="entry-sub">(${r.date})</span></div>
+        <div class="steps-entry-meta">${dist} км · ${kcal} ккал ${isAchieved ? '<span class="steps-entry-badge">✓ Цель выполнена</span>' : ''}</div>
+      </div>
+      <div class="steps-entry-value">${formatNum(r.steps)}</div>
+      <button class="entry-del">✕</button>
+    `;
+
+    row.querySelector('.steps-entry-info').onclick = () => openStepsSheet(r.date, r.steps);
+    row.querySelector('.entry-del').onclick = async (e) => {
+      e.stopPropagation();
+      await api(`/api/steps/${r.id}`, { method: 'DELETE' });
+      loadSteps();
+      if (r.date === currentDate) loadDay();
+    };
+    container.appendChild(row);
+  }
+}
+
+function openStepsSheet(date, steps) {
+  document.getElementById('stDate').value = date || currentDate || todayStr();
+  document.getElementById('stSteps').value = steps != null ? steps : '';
+  updateStepsPreview();
+  document.getElementById('stepsOverlay').classList.add('open');
+  setTimeout(() => {
+    const input = document.getElementById('stSteps');
+    if (input) input.focus();
+  }, 100);
+}
+
+function updateStepsPreview() {
+  const count = Math.max(0, Math.round(Number(document.getElementById('stSteps').value) || 0));
+  const dist = (count * 0.00075).toFixed(1);
+  const kcal = Math.round(count * 0.04);
+  const metaEl = document.getElementById('stPreviewMeta');
+  if (metaEl) metaEl.textContent = `~${dist} км · ~${kcal} ккал`;
+}
+
+async function saveStepsEntry() {
+  const date = document.getElementById('stDate').value;
+  const rawSteps = document.getElementById('stSteps').value;
+  if (!date || rawSteps === '') return;
+  const steps = Math.max(0, Math.round(Number(rawSteps)) || 0);
+  await api('/api/steps', {
+    method: 'POST',
+    body: JSON.stringify({ date, steps }),
+  });
+  document.getElementById('stepsOverlay').classList.remove('open');
+  if (date === currentDate) loadDay();
+  if (activeTab === 'steps') loadSteps();
+}
+
 async function loadWeight() {
-  const rows = await api('/api/weight');
-  renderWeightSummary(rows);
-  renderWeightChart(rows);
-  renderWeightPhotos(rows);
-  renderWeightList(rows);
+  const cached = getStorage('weight_list');
+  if (cached) {
+    renderWeightSummary(cached);
+    renderWeightChart(cached);
+    renderWeightPhotos(cached);
+    renderWeightList(cached);
+  }
+  try {
+    const rows = await api('/api/weight');
+    setStorage('weight_list', rows);
+    renderWeightSummary(rows);
+    renderWeightChart(rows);
+    renderWeightPhotos(rows);
+    renderWeightList(rows);
+  } catch (err) {
+    console.error('Failed to load weight:', err);
+  }
 }
 
 function renderWeightSummary(rows) {
@@ -819,13 +1134,30 @@ document.getElementById('nextDay').onclick = () => {
 };
 document.getElementById('fabAdd').onclick = () => {
   if (activeTab === 'weight') openWeightSheet();
+  else if (activeTab === 'steps') openStepsSheet();
   else if (activeTab === 'products') openProductSheet();
   else openAddSheet(currentMeal, MEALS.find((m) => m.key === currentMeal).label);
 };
 document.getElementById('tabDiary').onclick = () => switchTab('diary');
+document.getElementById('tabSteps').onclick = () => switchTab('steps');
 document.getElementById('tabWeight').onclick = () => switchTab('weight');
 document.getElementById('tabProducts').onclick = () => switchTab('products');
 document.getElementById('tabChat').onclick = () => switchTab('chat');
+
+document.getElementById('closeSteps').onclick = () => document.getElementById('stepsOverlay').classList.remove('open');
+document.getElementById('stepsOverlay').onclick = (e) => {
+  if (e.target.id === 'stepsOverlay') e.currentTarget.classList.remove('open');
+};
+document.getElementById('saveSteps').onclick = saveStepsEntry;
+document.getElementById('stSteps').addEventListener('input', updateStepsPreview);
+document.querySelectorAll('.quick-step-btn').forEach((btn) => {
+  btn.onclick = () => {
+    const add = Number(btn.getAttribute('data-add')) || 0;
+    const cur = Number(document.getElementById('stSteps').value) || 0;
+    document.getElementById('stSteps').value = cur + add;
+    updateStepsPreview();
+  };
+});
 
 document.getElementById('chatSend').onclick = sendChatMessage;
 document.getElementById('chatText').addEventListener('keydown', (e) => {
@@ -894,7 +1226,12 @@ document.getElementById('settingsOverlay').onclick = (e) => {
 };
 document.getElementById('saveSettings').onclick = saveSettings;
 
-(async function init() {
-  await loadSettings();
-  await loadDay();
+(function init() {
+  const cachedSettings = getStorage('settings');
+  if (cachedSettings) applySettings(cachedSettings);
+
+  const cachedDay = getStorage('day_' + currentDate);
+  if (cachedDay) applyDay(cachedDay);
+
+  loadDay();
 })();

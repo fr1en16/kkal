@@ -31,7 +31,49 @@
   </div>
 
   <div id="diaryView">
+    <div class="steps-widget" id="diaryStepsCard">
+      <div class="steps-widget-top">
+        <div class="steps-widget-title">
+          <span>Шаги</span>
+          <span class="steps-widget-numbers"><b id="diaryStepsCount">0</b> <span class="muted">/ <span id="diaryStepsGoal">10 000</span></span></span>
+        </div>
+        <button class="steps-widget-btn" id="diaryStepsEdit">Записать</button>
+      </div>
+      <div class="bar steps-bar"><div class="bar-fill steps-bar-fill" id="diaryStepsBar"></div></div>
+      <div class="steps-widget-meta">
+        <span><span id="diaryStepsDist">0.0</span> км · <span id="diaryStepsKcal">0</span> ккал</span>
+        <span class="steps-widget-percent" id="diaryStepsPct">0%</span>
+      </div>
+    </div>
     <div id="meals"></div>
+  </div>
+
+  <div id="stepsView" hidden>
+    <div class="weight-header">Дневник шагов</div>
+    <div class="steps-summary">
+      <div class="steps-current"><span id="stepsCurrent">0</span><span class="unit">шагов</span></div>
+      <div class="steps-target-status" id="stepsTargetStatus">Цель: 10 000</div>
+      <div class="steps-stats-row">
+        <div class="steps-stat-item">
+          <div class="steps-stat-val" id="stepsStatDist">0.0</div>
+          <div class="steps-stat-lbl">км</div>
+        </div>
+        <div class="steps-stat-item">
+          <div class="steps-stat-val" id="stepsStatKcal">0</div>
+          <div class="steps-stat-lbl">ккал</div>
+        </div>
+        <div class="steps-stat-item">
+          <div class="steps-stat-val" id="stepsStatAvg">0</div>
+          <div class="steps-stat-lbl">ср./день</div>
+        </div>
+      </div>
+    </div>
+    <div class="steps-chart-box">
+      <div class="steps-chart-title">График за последние 14 дней</div>
+      <svg id="stepsChart" class="steps-chart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="section-label">История шагов</div>
+    <div id="stepsList"></div>
   </div>
 
   <div id="weightView" hidden>
@@ -77,6 +119,7 @@
 
 <div class="tabbar">
   <button class="tab-btn active" id="tabDiary" data-tab="diary">Дневник</button>
+  <button class="tab-btn" id="tabSteps" data-tab="steps">Шаги</button>
   <button class="tab-btn" id="tabWeight" data-tab="weight">Вес</button>
   <button class="tab-btn" id="tabProducts" data-tab="products">Продукты</button>
   <button class="tab-btn" id="tabChat" data-tab="chat">Чат</button>
@@ -128,7 +171,7 @@
       <button class="text-btn" id="closeSettings">✕</button>
     </div>
 
-    <div class="section-label">Дневная норма</div>
+    <div class="section-label">Дневная норма калорий и БЖУ</div>
     <div class="row">
       <input class="field" id="sGoalKcal" type="number" placeholder="Ккал" />
     </div>
@@ -138,10 +181,41 @@
       <input class="field" id="sGoalCarbs" type="number" placeholder="Углеводы г" />
     </div>
 
+    <div class="section-label">Дневная норма шагов</div>
+    <div class="row">
+      <input class="field" id="sGoalSteps" type="number" placeholder="Шаги (напр. 10000)" />
+    </div>
+
     <div class="section-label">ИИ-помощник (распознавание фото)</div>
     <div class="ai-provider-info" id="aiProviderInfo">—</div>
 
     <button class="primary-btn" id="saveSettings">Сохранить</button>
+  </div>
+</div>
+
+<!-- Add steps modal -->
+<div class="overlay" id="stepsOverlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <span>Запись шагов</span>
+      <button class="text-btn" id="closeSteps">✕</button>
+    </div>
+
+    <input class="field" id="stDate" type="date" />
+    <input class="field" id="stSteps" type="number" inputmode="numeric" placeholder="Количество шагов за день" />
+
+    <div class="quick-steps-row">
+      <button type="button" class="quick-step-btn" data-add="1000">+1 000</button>
+      <button type="button" class="quick-step-btn" data-add="3000">+3 000</button>
+      <button type="button" class="quick-step-btn" data-add="5000">+5 000</button>
+      <button type="button" class="quick-step-btn" data-add="10000">+10 000</button>
+    </div>
+
+    <div class="steps-preview-meta" id="stPreviewMeta">
+      ~0.0 км · ~0 ккал
+    </div>
+
+    <button class="primary-btn" id="saveSteps">Сохранить шаги</button>
   </div>
 </div>
 

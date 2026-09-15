@@ -23,6 +23,7 @@ const DEFAULT_SETTINGS = {
   goal_protein: '120',
   goal_fat: '65',
   goal_carbs: '250',
+  goal_steps: '10000',
 };
 
 const AI_PROVIDER = process.env.AI_PROVIDER || 'openai';
@@ -71,6 +72,27 @@ app.put('/api/settings', asyncHandler(async (req, res) => {
 }));
 
 app.get('/api/providers', (req, res) => res.json(PROVIDERS));
+
+app.get('/api/day', asyncHandler(async (req, res) => {
+  const date = req.query.date;
+  if (!date) return res.status(400).json({ error: 'date is required' });
+
+  const [settings, entriesRes, stepsRes] = await Promise.all([
+    getSettings(),
+    db.query('SELECT * FROM kkal.entries WHERE date = $1 ORDER BY id ASC', [date]),
+    db.query('SELECT * FROM kkal.step_logs WHERE date = $1', [date]),
+  ]);
+
+  res.json({
+    settings: {
+      ...settings,
+      ai_provider: AI_PROVIDER,
+      ai_configured: Boolean(AI_API_KEYS[AI_PROVIDER]),
+    },
+    entries: entriesRes.rows,
+    steps: stepsRes.rows[0] || null,
+  });
+}));
 
 app.get('/api/entries', asyncHandler(async (req, res) => {
   const date = req.query.date;
@@ -236,6 +258,40 @@ app.delete('/api/weight/:id', asyncHandler(async (req, res) => {
     await del(row.photo, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
   }
   await db.query('DELETE FROM kkal.weight_logs WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.get('/api/steps', asyncHandler(async (req, res) => {
+  const date = req.query.date;
+  if (date) {
+    const { rows } = await db.query('SELECT * FROM kkal.step_logs WHERE date = $1', [date]);
+    return res.json(rows[0] || null);
+  }
+  const { rows } = await db.query('SELECT * FROM kkal.step_logs ORDER BY date ASC, id ASC');
+  res.json(rows);
+}));
+
+app.post('/api/steps', asyncHandler(async (req, res) => {
+  const { date, steps, distance_km, calories } = req.body || {};
+  if (!date || steps == null) return res.status(400).json({ error: 'date and steps required' });
+  const numSteps = Math.max(0, Math.round(Number(steps)) || 0);
+  const dist = distance_km != null ? Number(distance_km) : Math.round(numSteps * 0.00075 * 100) / 100;
+  const kcal = calories != null ? Number(calories) : Math.round(numSteps * 0.04);
+  const { rows } = await db.query(
+    `INSERT INTO kkal.step_logs (date, steps, distance_km, calories)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (date) DO UPDATE
+     SET steps = EXCLUDED.steps,
+         distance_km = EXCLUDED.distance_km,
+         calories = EXCLUDED.calories
+     RETURNING *`,
+    [date, numSteps, dist, kcal]
+  );
+  res.json(rows[0]);
+}));
+
+app.delete('/api/steps/:id', asyncHandler(async (req, res) => {
+  await db.query('DELETE FROM kkal.step_logs WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
 
