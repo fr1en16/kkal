@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>kkal</title>
+<link rel="icon" type="image/webp" href="favicon.webp" />
+<link rel="apple-touch-icon" href="apple-touch-icon.webp" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -246,6 +248,43 @@
   </div>
 </div>
 
+<!-- Edit entry modal -->
+<div class="overlay" id="editEntryOverlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <span>Редактировать блюдо</span>
+      <button class="text-btn" id="closeEditEntry">✕</button>
+    </div>
+
+    <div class="row">
+      <select class="field-select" id="editEntryMeal" style="flex: 1;" title="Приём пищи">
+        <option value="breakfast">Завтрак</option>
+        <option value="lunch">Обед</option>
+        <option value="dinner">Ужин</option>
+        <option value="snack">Перекус</option>
+      </select>
+      <input class="field" id="editEntryDate" type="date" style="flex: 1;" title="Дата" />
+    </div>
+
+    <input class="field" id="editEntryName" placeholder="Название блюда" autocomplete="off" />
+
+    <div class="row">
+      <input class="field" id="editEntryGrams" type="number" inputmode="decimal" placeholder="Граммы" />
+      <input class="field" id="editEntryKcal" type="number" inputmode="decimal" placeholder="Ккал" />
+    </div>
+    <div class="row">
+      <input class="field" id="editEntryProtein" type="number" inputmode="decimal" placeholder="Белки" />
+      <input class="field" id="editEntryFat" type="number" inputmode="decimal" placeholder="Жиры" />
+      <input class="field" id="editEntryCarbs" type="number" inputmode="decimal" placeholder="Углеводы" />
+    </div>
+
+    <div class="modal-actions-row">
+      <button class="danger-ghost-btn" id="deleteEditEntry" type="button">Удалить</button>
+      <button class="primary-btn" id="saveEditEntry" type="button">Сохранить</button>
+    </div>
+  </div>
+</div>
+
 <!-- Settings modal -->
 <div class="overlay" id="settingsOverlay">
   <div class="sheet">
@@ -276,11 +315,11 @@
   </div>
 </div>
 
-<!-- Add steps modal -->
+<!-- Add/Edit steps modal -->
 <div class="overlay" id="stepsOverlay">
   <div class="sheet">
     <div class="sheet-header">
-      <span>Запись шагов</span>
+      <span id="stepsSheetTitle">Запись шагов</span>
       <button class="text-btn" id="closeSteps">✕</button>
     </div>
 
@@ -298,38 +337,52 @@
       ~0.0 км · ~0 ккал
     </div>
 
-    <button class="primary-btn" id="saveSteps">Сохранить шаги</button>
+    <div class="row" id="stCustomRow">
+      <input class="field" id="stDist" type="number" inputmode="decimal" step="0.1" placeholder="Дистанция, км (авто)" />
+      <input class="field" id="stKcal" type="number" inputmode="decimal" placeholder="Ккал сожжено (авто)" />
+    </div>
+
+    <div class="modal-actions-row">
+      <button class="danger-ghost-btn" id="deleteStepsBtn" type="button" hidden>Удалить</button>
+      <button class="primary-btn" id="saveSteps" type="button">Сохранить шаги</button>
+    </div>
   </div>
 </div>
 
-<!-- Add weight modal -->
+<!-- Add/Edit weight modal -->
 <div class="overlay" id="weightOverlay">
   <div class="sheet">
     <div class="sheet-header">
-      <span>Замер веса</span>
+      <span id="weightSheetTitle">Замер веса</span>
       <button class="text-btn" id="closeWeight">✕</button>
     </div>
 
     <input class="field" id="wDate" type="date" />
     <input class="field" id="wWeight" type="number" inputmode="decimal" step="0.1" placeholder="Вес, кг" />
 
-    <button class="photo-btn" id="wPhotoBtn">📷 Добавить фото</button>
+    <button class="photo-btn" id="wPhotoBtn" type="button">📷 Добавить фото</button>
     <input type="file" id="wPhotoInput" accept="image/*" capture="environment" hidden />
-    <img id="wPhotoPreview" class="weight-photo-preview" hidden />
+    <div class="weight-photo-preview-wrap" id="wPhotoWrap" hidden>
+      <img id="wPhotoPreview" class="weight-photo-preview" />
+      <button class="photo-remove-btn" id="wPhotoRemove" type="button" title="Удалить фото">✕</button>
+    </div>
 
-    <button class="primary-btn" id="saveWeight">Добавить</button>
+    <div class="modal-actions-row">
+      <button class="danger-ghost-btn" id="deleteWeightBtn" type="button" hidden>Удалить</button>
+      <button class="primary-btn" id="saveWeight" type="button">Сохранить</button>
+    </div>
   </div>
 </div>
 
-<!-- Add product modal -->
+<!-- Add/Edit product modal -->
 <div class="overlay" id="productOverlay">
   <div class="sheet">
     <div class="sheet-header">
-      <span>Новый продукт</span>
+      <span id="productSheetTitle">Новый продукт</span>
       <button class="text-btn" id="closeProduct">✕</button>
     </div>
 
-    <button class="photo-btn" id="productPhotoBtn">📷 Распознать упаковку</button>
+    <button class="photo-btn" id="productPhotoBtn" type="button">📷 Распознать упаковку</button>
     <input type="file" id="productPhotoInput" accept="image/*" capture="environment" hidden />
     <div id="productAiStatus" class="ai-status" hidden></div>
 
@@ -342,7 +395,10 @@
       <input class="field" id="pFat" type="number" inputmode="decimal" placeholder="Жиры" />
       <input class="field" id="pCarbs" type="number" inputmode="decimal" placeholder="Углеводы" />
     </div>
-    <button class="primary-btn" id="saveProduct">Сохранить продукт</button>
+    <div class="modal-actions-row">
+      <button class="danger-ghost-btn" id="deleteProductBtn" type="button" hidden>Удалить</button>
+      <button class="primary-btn" id="saveProduct" type="button">Сохранить продукт</button>
+    </div>
   </div>
 </div>
 

@@ -332,22 +332,125 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 0;
+  padding: 10px 6px;
   border-bottom: 1px solid var(--border);
+  transition: background 0.15s ease;
 }
 .entry:last-child { border-bottom: none; }
+.entry.entry-clickable {
+  cursor: pointer;
+  border-radius: 8px;
+}
+.entry.entry-clickable:hover {
+  background: rgba(125, 125, 125, 0.06);
+}
 .entry-name { flex: 1; font-size: 14px; }
 .entry-sub { font-size: 12px; color: var(--muted); }
 .entry-kcal { font-size: 14px; font-weight: 600; min-width: 48px; text-align: right; }
-.entry-del {
+
+.entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.entry-action-btn {
   background: none;
   border: none;
   color: var(--muted);
-  font-size: 16px;
+  font-size: 15px;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-.entry-del:active { color: var(--danger); }
+.entry-action-btn:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+.entry-action-btn.entry-del:hover {
+  background: var(--accent-soft);
+  color: var(--danger);
+}
+.entry-action-btn.entry-edit:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.product-row.product-clickable,
+.weight-entry.weight-clickable,
+.steps-entry.steps-clickable {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+.product-row.product-clickable:hover,
+.weight-entry.weight-clickable:hover,
+.steps-entry.steps-clickable:hover {
+  background: rgba(125, 125, 125, 0.06);
+}
+
+.modal-actions-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.modal-actions-row .primary-btn {
+  flex: 1;
+  margin-top: 0;
+}
+
+.danger-ghost-btn {
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.danger-ghost-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--danger);
+}
+
+.weight-photo-preview-wrap {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 12px;
+}
+.weight-photo-preview-wrap .weight-photo-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+.photo-remove-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+.photo-remove-btn:hover {
+  background: var(--danger);
+}
 
 .empty-hint {
   color: var(--muted);

@@ -122,12 +122,12 @@ app.post('/api/entries', asyncHandler(async (req, res) => {
 }));
 
 app.put('/api/entries/:id', asyncHandler(async (req, res) => {
-  const { name, grams, calories, protein, fat, carbs, meal } = req.body || {};
+  const { name, grams, calories, protein, fat, carbs, meal, date } = req.body || {};
   const { rows: existingRows } = await db.query('SELECT * FROM kkal.entries WHERE id = $1', [req.params.id]);
   const existing = existingRows[0];
   if (!existing) return res.status(404).json({ error: 'not found' });
   const { rows } = await db.query(
-    `UPDATE kkal.entries SET name=$1, grams=$2, calories=$3, protein=$4, fat=$5, carbs=$6, meal=$7 WHERE id=$8 RETURNING *`,
+    `UPDATE kkal.entries SET name=$1, grams=$2, calories=$3, protein=$4, fat=$5, carbs=$6, meal=$7, date=$8 WHERE id=$9 RETURNING *`,
     [
       name ?? existing.name,
       grams != null ? Number(grams) : existing.grams,
@@ -136,6 +136,7 @@ app.put('/api/entries/:id', asyncHandler(async (req, res) => {
       fat != null ? Number(fat) : existing.fat,
       carbs != null ? Number(carbs) : existing.carbs,
       meal ?? existing.meal,
+      date ?? existing.date,
       req.params.id,
     ]
   );
@@ -206,6 +207,27 @@ app.post('/api/products', asyncHandler(async (req, res) => {
   res.json(rows[0]);
 }));
 
+app.put('/api/products/:id', asyncHandler(async (req, res) => {
+  const { name, calories, protein, fat, carbs } = req.body || {};
+  const { rows: existingRows } = await db.query('SELECT * FROM kkal.products WHERE id = $1', [req.params.id]);
+  const existing = existingRows[0];
+  if (!existing) return res.status(404).json({ error: 'not found' });
+  const { rows } = await db.query(
+    `UPDATE kkal.products
+     SET name = $1, calories = $2, protein = $3, fat = $4, carbs = $5
+     WHERE id = $6 RETURNING *`,
+    [
+      name ?? existing.name,
+      calories != null ? Number(calories) : existing.calories,
+      protein != null ? Number(protein) : existing.protein,
+      fat != null ? Number(fat) : existing.fat,
+      carbs != null ? Number(carbs) : existing.carbs,
+      req.params.id,
+    ]
+  );
+  res.json(rows[0]);
+}));
+
 app.delete('/api/products/:id', asyncHandler(async (req, res) => {
   await db.query('DELETE FROM kkal.products WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
@@ -250,6 +272,34 @@ app.post('/api/weight', uploadWeightPhoto.single('photo'), asyncHandler(async (r
   res.json(rows[0]);
 }));
 
+app.put('/api/weight/:id', uploadWeightPhoto.single('photo'), asyncHandler(async (req, res) => {
+  const { date, weight, removePhoto } = req.body || {};
+  const { rows: existingRows } = await db.query('SELECT * FROM kkal.weight_logs WHERE id = $1', [req.params.id]);
+  const existing = existingRows[0];
+  if (!existing) return res.status(404).json({ error: 'not found' });
+
+  let photo = existing.photo;
+  if (req.file) {
+    if (existing.photo && process.env.BLOB_READ_WRITE_TOKEN) {
+      await del(existing.photo, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
+    }
+    photo = await storePhoto(req.file);
+  } else if (removePhoto === 'true' || removePhoto === true) {
+    if (existing.photo && process.env.BLOB_READ_WRITE_TOKEN) {
+      await del(existing.photo, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
+    }
+    photo = null;
+  }
+
+  const targetDate = date ?? existing.date;
+  const targetWeight = weight != null ? Number(weight) : existing.weight;
+  const { rows } = await db.query(
+    'UPDATE kkal.weight_logs SET date = $1, weight = $2, photo = $3 WHERE id = $4 RETURNING *',
+    [targetDate, targetWeight, photo, req.params.id]
+  );
+  res.json(rows[0]);
+}));
+
 app.delete('/api/weight/:id', asyncHandler(async (req, res) => {
   const { rows } = await db.query('SELECT * FROM kkal.weight_logs WHERE id = $1', [req.params.id]);
   const row = rows[0];
@@ -286,6 +336,38 @@ app.post('/api/steps', asyncHandler(async (req, res) => {
          calories = EXCLUDED.calories
      RETURNING *`,
     [date, numSteps, dist, kcal]
+  );
+  res.json(rows[0]);
+}));
+
+app.put('/api/steps/:id', asyncHandler(async (req, res) => {
+  const { date, steps, distance_km, calories } = req.body || {};
+  const { rows: existingRows } = await db.query('SELECT * FROM kkal.step_logs WHERE id = $1', [req.params.id]);
+  const existing = existingRows[0];
+  if (!existing) return res.status(404).json({ error: 'not found' });
+
+  const targetDate = date ?? existing.date;
+  const numSteps = steps != null ? Math.max(0, Math.round(Number(steps)) || 0) : existing.steps;
+  const dist = distance_km != null ? Number(distance_km) : Math.round(numSteps * 0.00075 * 100) / 100;
+  const kcal = calories != null ? Number(calories) : Math.round(numSteps * 0.04);
+
+  if (targetDate !== existing.date) {
+    const conflictRes = await db.query('SELECT id FROM kkal.step_logs WHERE date = $1 AND id != $2', [targetDate, req.params.id]);
+    if (conflictRes.rows.length > 0) {
+      await db.query('DELETE FROM kkal.step_logs WHERE id = $1', [req.params.id]);
+      const { rows } = await db.query(
+        'UPDATE kkal.step_logs SET steps=$1, distance_km=$2, calories=$3 WHERE id=$4 RETURNING *',
+        [numSteps, dist, kcal, conflictRes.rows[0].id]
+      );
+      return res.json(rows[0]);
+    }
+  }
+
+  const { rows } = await db.query(
+    `UPDATE kkal.step_logs
+     SET date = $1, steps = $2, distance_km = $3, calories = $4
+     WHERE id = $5 RETURNING *`,
+    [targetDate, numSteps, dist, kcal, req.params.id]
   );
   res.json(rows[0]);
 }));

@@ -229,22 +229,114 @@ function renderMeals(entries) {
   }
 }
 
+let editingEntry = null;
+let editEntryOriginalGrams = 0;
+let editEntryOriginalKcal = 0;
+let editEntryOriginalProtein = 0;
+let editEntryOriginalFat = 0;
+let editEntryOriginalCarbs = 0;
+
 function renderEntry(e) {
   const row = document.createElement('div');
-  row.className = 'entry';
+  row.className = 'entry entry-clickable';
   const sub = [e.grams ? `${round(e.grams)} г` : null, `Б${round(e.protein)} Ж${round(e.fat)} У${round(e.carbs)}`]
     .filter(Boolean)
     .join(' · ');
   row.innerHTML = `
     <div class="entry-name">${escapeHtml(e.name)}<div class="entry-sub">${sub}</div></div>
     <div class="entry-kcal">${round(e.calories)}</div>
-    <button class="entry-del">✕</button>
+    <div class="entry-actions">
+      <button class="entry-action-btn entry-edit" title="Редактировать">✎</button>
+      <button class="entry-action-btn entry-del" title="Удалить">✕</button>
+    </div>
   `;
-  row.querySelector('.entry-del').onclick = async () => {
+  row.onclick = (evt) => {
+    if (evt.target.closest('.entry-del')) return;
+    openEditEntrySheet(e);
+  };
+  row.querySelector('.entry-edit').onclick = (evt) => {
+    evt.stopPropagation();
+    openEditEntrySheet(e);
+  };
+  row.querySelector('.entry-del').onclick = async (evt) => {
+    evt.stopPropagation();
     await api(`/api/entries/${e.id}`, { method: 'DELETE' });
     loadDay();
   };
   return row;
+}
+
+function openEditEntrySheet(entry) {
+  editingEntry = entry;
+  document.getElementById('editEntryMeal').value = entry.meal || currentMeal;
+  document.getElementById('editEntryDate').value = entry.date || currentDate;
+  document.getElementById('editEntryName').value = entry.name || '';
+  document.getElementById('editEntryGrams').value = entry.grams != null ? entry.grams : '';
+  document.getElementById('editEntryKcal').value = entry.calories != null ? round(entry.calories) : '';
+  document.getElementById('editEntryProtein').value = entry.protein != null ? round(entry.protein) : '';
+  document.getElementById('editEntryFat').value = entry.fat != null ? round(entry.fat) : '';
+  document.getElementById('editEntryCarbs').value = entry.carbs != null ? round(entry.carbs) : '';
+
+  editEntryOriginalGrams = Number(entry.grams) || 0;
+  editEntryOriginalKcal = Number(entry.calories) || 0;
+  editEntryOriginalProtein = Number(entry.protein) || 0;
+  editEntryOriginalFat = Number(entry.fat) || 0;
+  editEntryOriginalCarbs = Number(entry.carbs) || 0;
+
+  document.getElementById('editEntryOverlay').classList.add('open');
+}
+
+function handleEditEntryGramsChange() {
+  if (!editEntryOriginalGrams || editEntryOriginalGrams <= 0) return;
+  const newGrams = Number(document.getElementById('editEntryGrams').value) || 0;
+  if (newGrams <= 0) return;
+  const ratio = newGrams / editEntryOriginalGrams;
+  document.getElementById('editEntryKcal').value = round(editEntryOriginalKcal * ratio);
+  document.getElementById('editEntryProtein').value = round(editEntryOriginalProtein * ratio);
+  document.getElementById('editEntryFat').value = round(editEntryOriginalFat * ratio);
+  document.getElementById('editEntryCarbs').value = round(editEntryOriginalCarbs * ratio);
+}
+
+async function saveEditEntry() {
+  if (!editingEntry) return;
+  const name = document.getElementById('editEntryName').value.trim();
+  if (!name) {
+    document.getElementById('editEntryName').focus();
+    return;
+  }
+  const meal = document.getElementById('editEntryMeal').value;
+  const date = document.getElementById('editEntryDate').value || currentDate;
+  const grams = document.getElementById('editEntryGrams').value;
+  const calories = document.getElementById('editEntryKcal').value;
+  const protein = document.getElementById('editEntryProtein').value;
+  const fat = document.getElementById('editEntryFat').value;
+  const carbs = document.getElementById('editEntryCarbs').value;
+
+  await api(`/api/entries/${editingEntry.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      date,
+      meal,
+      name,
+      grams: grams !== '' ? Number(grams) : null,
+      calories: Number(calories) || 0,
+      protein: Number(protein) || 0,
+      fat: Number(fat) || 0,
+      carbs: Number(carbs) || 0,
+    }),
+  });
+
+  document.getElementById('editEntryOverlay').classList.remove('open');
+  editingEntry = null;
+  loadDay();
+}
+
+async function deleteCurrentEditEntry() {
+  if (!editingEntry) return;
+  await api(`/api/entries/${editingEntry.id}`, { method: 'DELETE' });
+  document.getElementById('editEntryOverlay').classList.remove('open');
+  editingEntry = null;
+  loadDay();
 }
 
 function escapeHtml(s) {
@@ -677,6 +769,8 @@ function clearChatPhoto() {
   thumb.src = '';
 }
 
+let editingProduct = null;
+
 async function loadProducts(q) {
   const products = await api(`/api/products?q=${encodeURIComponent(q || '')}`);
   const container = document.getElementById('productsList');
@@ -687,15 +781,27 @@ async function loadProducts(q) {
   }
   for (const p of products) {
     const row = document.createElement('div');
-    row.className = 'product-row';
+    row.className = 'product-row product-clickable';
     row.innerHTML = `
       <div class="product-row-info">
         <div class="product-row-name">${escapeHtml(p.name)}</div>
         <div class="product-row-sub">${round(p.calories)} ккал · Б${round(p.protein)} Ж${round(p.fat)} У${round(p.carbs)} на 100г</div>
       </div>
-      <button class="entry-del">✕</button>
+      <div class="entry-actions">
+        <button class="entry-action-btn entry-edit" title="Редактировать">✎</button>
+        <button class="entry-action-btn entry-del" title="Удалить">✕</button>
+      </div>
     `;
-    row.querySelector('.entry-del').onclick = async () => {
+    row.onclick = (evt) => {
+      if (evt.target.closest('.entry-del')) return;
+      openEditProductSheet(p);
+    };
+    row.querySelector('.entry-edit').onclick = (evt) => {
+      evt.stopPropagation();
+      openEditProductSheet(p);
+    };
+    row.querySelector('.entry-del').onclick = async (evt) => {
+      evt.stopPropagation();
       await api(`/api/products/${p.id}`, { method: 'DELETE' });
       loadProducts(document.getElementById('productsSearch').value);
     };
@@ -704,11 +810,29 @@ async function loadProducts(q) {
 }
 
 function openProductSheet() {
+  editingProduct = null;
+  document.getElementById('productSheetTitle').textContent = 'Новый продукт';
+  document.getElementById('saveProduct').textContent = 'Сохранить продукт';
+  document.getElementById('deleteProductBtn').hidden = true;
   document.getElementById('pName').value = '';
   document.getElementById('pKcal').value = '';
   document.getElementById('pProtein').value = '';
   document.getElementById('pFat').value = '';
   document.getElementById('pCarbs').value = '';
+  document.getElementById('productAiStatus').hidden = true;
+  document.getElementById('productOverlay').classList.add('open');
+}
+
+function openEditProductSheet(p) {
+  editingProduct = p;
+  document.getElementById('productSheetTitle').textContent = 'Редактировать продукт';
+  document.getElementById('saveProduct').textContent = 'Сохранить изменения';
+  document.getElementById('deleteProductBtn').hidden = false;
+  document.getElementById('pName').value = p.name || '';
+  document.getElementById('pKcal').value = p.calories != null ? round(p.calories) : '';
+  document.getElementById('pProtein').value = p.protein != null ? round(p.protein) : '';
+  document.getElementById('pFat').value = p.fat != null ? round(p.fat) : '';
+  document.getElementById('pCarbs').value = p.carbs != null ? round(p.carbs) : '';
   document.getElementById('productAiStatus').hidden = true;
   document.getElementById('productOverlay').classList.add('open');
 }
@@ -719,17 +843,35 @@ async function saveProductEntry() {
     document.getElementById('pName').focus();
     return;
   }
-  await api('/api/products', {
-    method: 'POST',
-    body: JSON.stringify({
-      name,
-      calories: document.getElementById('pKcal').value || 0,
-      protein: document.getElementById('pProtein').value || 0,
-      fat: document.getElementById('pFat').value || 0,
-      carbs: document.getElementById('pCarbs').value || 0,
-    }),
-  });
+  const body = {
+    name,
+    calories: Number(document.getElementById('pKcal').value) || 0,
+    protein: Number(document.getElementById('pProtein').value) || 0,
+    fat: Number(document.getElementById('pFat').value) || 0,
+    carbs: Number(document.getElementById('pCarbs').value) || 0,
+  };
+
+  if (editingProduct) {
+    await api(`/api/products/${editingProduct.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  } else {
+    await api('/api/products', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
   document.getElementById('productOverlay').classList.remove('open');
+  editingProduct = null;
+  loadProducts(document.getElementById('productsSearch').value);
+}
+
+async function deleteProductEntry() {
+  if (!editingProduct) return;
+  await api(`/api/products/${editingProduct.id}`, { method: 'DELETE' });
+  document.getElementById('productOverlay').classList.remove('open');
+  editingProduct = null;
   loadProducts(document.getElementById('productsSearch').value);
 }
 
@@ -869,7 +1011,11 @@ function renderStepsChart(rows) {
       const title = document.createElementNS(ns, 'title');
       title.textContent = `${d.date}: ${formatNum(d.steps)} шагов`;
       rect.appendChild(title);
-      rect.onclick = () => openStepsSheet(d.date, d.steps || '');
+      rect.onclick = () => {
+        const item = stepMap.get(d.date);
+        if (item) openEditStepsSheet(item);
+        else openStepsSheet(d.date, '');
+      };
       svg.appendChild(rect);
     }
 
@@ -885,6 +1031,8 @@ function renderStepsChart(rows) {
   });
 }
 
+let editingStep = null;
+
 function renderStepsList(rows) {
   const container = document.getElementById('stepsList');
   container.innerHTML = '';
@@ -896,7 +1044,7 @@ function renderStepsList(rows) {
   const reversed = rows.slice().reverse();
   for (const r of reversed) {
     const row = document.createElement('div');
-    row.className = 'steps-entry';
+    row.className = 'steps-entry steps-clickable';
     const isAchieved = r.steps >= goal;
     const dist = (r.distance_km || Math.round(r.steps * 0.00075 * 10) / 10).toFixed(1);
     const kcal = round(r.calories || Math.round(r.steps * 0.04));
@@ -907,10 +1055,20 @@ function renderStepsList(rows) {
         <div class="steps-entry-meta">${dist} км · ${kcal} ккал ${isAchieved ? '<span class="steps-entry-badge">✓ Цель выполнена</span>' : ''}</div>
       </div>
       <div class="steps-entry-value">${formatNum(r.steps)}</div>
-      <button class="entry-del">✕</button>
+      <div class="entry-actions">
+        <button class="entry-action-btn entry-edit" title="Редактировать">✎</button>
+        <button class="entry-action-btn entry-del" title="Удалить">✕</button>
+      </div>
     `;
 
-    row.querySelector('.steps-entry-info').onclick = () => openStepsSheet(r.date, r.steps);
+    row.onclick = (evt) => {
+      if (evt.target.closest('.entry-del')) return;
+      openEditStepsSheet(r);
+    };
+    row.querySelector('.entry-edit').onclick = (evt) => {
+      evt.stopPropagation();
+      openEditStepsSheet(r);
+    };
     row.querySelector('.entry-del').onclick = async (e) => {
       e.stopPropagation();
       await api(`/api/steps/${r.id}`, { method: 'DELETE' });
@@ -922,8 +1080,31 @@ function renderStepsList(rows) {
 }
 
 function openStepsSheet(date, steps) {
+  editingStep = null;
+  document.getElementById('stepsSheetTitle').textContent = 'Запись шагов';
+  document.getElementById('saveSteps').textContent = 'Сохранить шаги';
+  document.getElementById('deleteStepsBtn').hidden = true;
   document.getElementById('stDate').value = date || currentDate || todayStr();
   document.getElementById('stSteps').value = steps != null ? steps : '';
+  document.getElementById('stDist').value = '';
+  document.getElementById('stKcal').value = '';
+  updateStepsPreview();
+  document.getElementById('stepsOverlay').classList.add('open');
+  setTimeout(() => {
+    const input = document.getElementById('stSteps');
+    if (input) input.focus();
+  }, 100);
+}
+
+function openEditStepsSheet(r) {
+  editingStep = r;
+  document.getElementById('stepsSheetTitle').textContent = 'Редактировать шаги';
+  document.getElementById('saveSteps').textContent = 'Сохранить изменения';
+  document.getElementById('deleteStepsBtn').hidden = false;
+  document.getElementById('stDate').value = r.date;
+  document.getElementById('stSteps').value = r.steps != null ? r.steps : '';
+  document.getElementById('stDist').value = r.distance_km != null ? r.distance_km : '';
+  document.getElementById('stKcal').value = r.calories != null ? round(r.calories) : '';
   updateStepsPreview();
   document.getElementById('stepsOverlay').classList.add('open');
   setTimeout(() => {
@@ -934,8 +1115,12 @@ function openStepsSheet(date, steps) {
 
 function updateStepsPreview() {
   const count = Math.max(0, Math.round(Number(document.getElementById('stSteps').value) || 0));
-  const dist = (count * 0.00075).toFixed(1);
-  const kcal = Math.round(count * 0.04);
+  const autoDist = (count * 0.00075).toFixed(1);
+  const autoKcal = Math.round(count * 0.04);
+  const userDist = document.getElementById('stDist').value;
+  const userKcal = document.getElementById('stKcal').value;
+  const dist = userDist !== '' && !isNaN(Number(userDist)) ? Number(userDist).toFixed(1) : autoDist;
+  const kcal = userKcal !== '' && !isNaN(Number(userKcal)) ? Math.round(Number(userKcal)) : autoKcal;
   const metaEl = document.getElementById('stPreviewMeta');
   if (metaEl) metaEl.textContent = `~${dist} км · ~${kcal} ккал`;
 }
@@ -945,13 +1130,43 @@ async function saveStepsEntry() {
   const rawSteps = document.getElementById('stSteps').value;
   if (!date || rawSteps === '') return;
   const steps = Math.max(0, Math.round(Number(rawSteps)) || 0);
-  await api('/api/steps', {
-    method: 'POST',
-    body: JSON.stringify({ date, steps }),
-  });
+  const distVal = document.getElementById('stDist').value;
+  const kcalVal = document.getElementById('stKcal').value;
+  const body = {
+    date,
+    steps,
+    distance_km: distVal !== '' ? Number(distVal) : null,
+    calories: kcalVal !== '' ? Number(kcalVal) : null,
+  };
+
+  if (editingStep) {
+    await api(`/api/steps/${editingStep.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  } else {
+    await api('/api/steps', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   document.getElementById('stepsOverlay').classList.remove('open');
+  const targetDate = date;
+  const prevDate = editingStep ? editingStep.date : null;
+  editingStep = null;
+  if (targetDate === currentDate || prevDate === currentDate) loadDay();
+  loadSteps();
+}
+
+async function deleteStepEntry() {
+  if (!editingStep) return;
+  const date = editingStep.date;
+  await api(`/api/steps/${editingStep.id}`, { method: 'DELETE' });
+  document.getElementById('stepsOverlay').classList.remove('open');
+  editingStep = null;
   if (date === currentDate) loadDay();
-  if (activeTab === 'steps') loadSteps();
+  loadSteps();
 }
 
 async function loadWeight() {
@@ -1056,6 +1271,9 @@ function renderWeightPhotos(rows) {
   }
 }
 
+let editingWeight = null;
+let removeExistingWeightPhoto = false;
+
 function renderWeightList(rows) {
   const container = document.getElementById('weightList');
   container.innerHTML = '';
@@ -1063,17 +1281,34 @@ function renderWeightList(rows) {
   reversed.forEach((r, i) => {
     const prev = reversed[i + 1];
     const row = document.createElement('div');
-    row.className = 'weight-entry';
+    row.className = 'weight-entry weight-clickable';
     const diff = prev ? round(r.weight - prev.weight) : null;
     const diffText = diff == null ? '' : diff === 0 ? '±0' : (diff > 0 ? '+' : '') + diff;
     row.innerHTML = `
       ${r.photo ? `<img class="weight-entry-photo" src="${r.photo}" />` : '<div class="weight-entry-photo-empty"></div>'}
       <div class="weight-entry-date">${r.date}<div class="entry-sub">${diffText}</div></div>
       <div class="weight-entry-value">${round(r.weight)} кг</div>
-      <button class="entry-del">✕</button>
+      <div class="entry-actions">
+        <button class="entry-action-btn entry-edit" title="Редактировать">✎</button>
+        <button class="entry-action-btn entry-del" title="Удалить">✕</button>
+      </div>
     `;
-    if (r.photo) row.querySelector('.weight-entry-photo').onclick = () => openLightbox(r.photo);
-    row.querySelector('.entry-del').onclick = async () => {
+    if (r.photo) {
+      row.querySelector('.weight-entry-photo').onclick = (evt) => {
+        evt.stopPropagation();
+        openLightbox(r.photo);
+      };
+    }
+    row.onclick = (evt) => {
+      if (evt.target.closest('.entry-del') || evt.target.closest('.weight-entry-photo')) return;
+      openEditWeightSheet(r);
+    };
+    row.querySelector('.entry-edit').onclick = (evt) => {
+      evt.stopPropagation();
+      openEditWeightSheet(r);
+    };
+    row.querySelector('.entry-del').onclick = async (evt) => {
+      evt.stopPropagation();
       await api(`/api/weight/${r.id}`, { method: 'DELETE' });
       loadWeight();
     };
@@ -1087,12 +1322,38 @@ function openLightbox(src) {
 }
 
 function openWeightSheet() {
+  editingWeight = null;
+  removeExistingWeightPhoto = false;
+  document.getElementById('weightSheetTitle').textContent = 'Замер веса';
+  document.getElementById('saveWeight').textContent = 'Добавить';
+  document.getElementById('deleteWeightBtn').hidden = true;
   document.getElementById('wDate').value = todayStr();
   document.getElementById('wWeight').value = '';
   weightPhotoFile = null;
+  const wrap = document.getElementById('wPhotoWrap');
+  wrap.hidden = true;
+  document.getElementById('wPhotoPreview').src = '';
+  document.getElementById('weightOverlay').classList.add('open');
+}
+
+function openEditWeightSheet(r) {
+  editingWeight = r;
+  removeExistingWeightPhoto = false;
+  document.getElementById('weightSheetTitle').textContent = 'Редактировать замер';
+  document.getElementById('saveWeight').textContent = 'Сохранить';
+  document.getElementById('deleteWeightBtn').hidden = false;
+  document.getElementById('wDate').value = r.date;
+  document.getElementById('wWeight').value = round(r.weight);
+  weightPhotoFile = null;
+  const wrap = document.getElementById('wPhotoWrap');
   const preview = document.getElementById('wPhotoPreview');
-  preview.hidden = true;
-  preview.src = '';
+  if (r.photo) {
+    wrap.hidden = false;
+    preview.src = r.photo;
+  } else {
+    wrap.hidden = true;
+    preview.src = '';
+  }
   document.getElementById('weightOverlay').classList.add('open');
 }
 
@@ -1103,9 +1364,27 @@ async function saveWeightEntry() {
   const form = new FormData();
   form.append('date', date);
   form.append('weight', weight);
-  if (weightPhotoFile) form.append('photo', weightPhotoFile);
-  await fetch('/api/weight', { method: 'POST', body: form });
+  if (weightPhotoFile) {
+    form.append('photo', weightPhotoFile);
+  } else if (removeExistingWeightPhoto) {
+    form.append('removePhoto', 'true');
+  }
+
+  if (editingWeight) {
+    await fetch(`/api/weight/${editingWeight.id}`, { method: 'PUT', body: form });
+  } else {
+    await fetch('/api/weight', { method: 'POST', body: form });
+  }
   document.getElementById('weightOverlay').classList.remove('open');
+  editingWeight = null;
+  loadWeight();
+}
+
+async function deleteWeightEntry() {
+  if (!editingWeight) return;
+  await api(`/api/weight/${editingWeight.id}`, { method: 'DELETE' });
+  document.getElementById('weightOverlay').classList.remove('open');
+  editingWeight = null;
   loadWeight();
 }
 
@@ -1229,6 +1508,31 @@ document.getElementById('addOverlay').onclick = (e) => {
 };
 document.getElementById('saveEntry').onclick = saveManualEntry;
 document.getElementById('fName').addEventListener('input', (e) => loadRecent(e.target.value));
+
+document.getElementById('closeEditEntry').onclick = () => document.getElementById('editEntryOverlay').classList.remove('open');
+document.getElementById('editEntryOverlay').onclick = (e) => {
+  if (e.target.id === 'editEntryOverlay') e.currentTarget.classList.remove('open');
+};
+document.getElementById('saveEditEntry').onclick = saveEditEntry;
+document.getElementById('deleteEditEntry').onclick = deleteCurrentEditEntry;
+document.getElementById('editEntryGrams').addEventListener('input', handleEditEntryGramsChange);
+
+document.getElementById('deleteProductBtn').onclick = deleteProductEntry;
+document.getElementById('deleteStepsBtn').onclick = deleteStepEntry;
+document.getElementById('deleteWeightBtn').onclick = deleteWeightEntry;
+
+document.getElementById('stDist').addEventListener('input', updateStepsPreview);
+document.getElementById('stKcal').addEventListener('input', updateStepsPreview);
+
+const wPhotoRemoveBtn = document.getElementById('wPhotoRemove');
+if (wPhotoRemoveBtn) {
+  wPhotoRemoveBtn.onclick = () => {
+    weightPhotoFile = null;
+    removeExistingWeightPhoto = true;
+    document.getElementById('wPhotoWrap').hidden = true;
+    document.getElementById('wPhotoPreview').src = '';
+  };
+}
 
 document.getElementById('photoBtn').onclick = () => document.getElementById('photoInput').click();
 document.getElementById('photoInput').onchange = (e) => {
