@@ -37,42 +37,47 @@ body {
 }
 
 .app-layout {
-  max-width: 680px;
+  max-width: 600px;
   margin: 0 auto;
-  padding: 12px 16px 140px;
+  padding: 8px 12px calc(90px + env(safe-area-inset-bottom, 20px));
 }
+
+/* ==========================================================================
+   TOPBAR
+   ========================================================================== */
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 0 14px;
+  gap: 8px;
+  padding: 4px 0 10px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .topbar-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   cursor: pointer;
   user-select: none;
+  flex-shrink: 0;
 }
 .logo-icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: var(--accent);
   color: #fff;
-  border-radius: 8px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 14px;
 }
 .logo-title {
   font-weight: 800;
-  font-size: 20px;
+  font-size: 18px;
   letter-spacing: -0.02em;
   color: var(--accent);
 }
@@ -80,63 +85,79 @@ body {
 .topbar-date {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 4px 8px;
+  border-radius: 20px;
+  padding: 2px 4px;
+  flex: 1;
+  max-width: 240px;
+  justify-content: space-between;
+}
+
+.icon-btn-date {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 16px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+.icon-btn-date:active {
+  background: var(--border);
 }
 
 .date {
   text-align: center;
   font-weight: 600;
-  font-size: 14px;
-  min-width: 160px;
+  font-size: 13px;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
 }
 
 .today-btn {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 3px 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: none;
+  border-radius: 10px;
+  padding: 2px 7px;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--text);
+  font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.today-btn:hover {
-  background: var(--border);
+
+.topbar-history-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.topbar-btn {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.topbar-btn:hover {
-  background: var(--border);
+  flex-shrink: 0;
 }
 
 .icon-btn {
-  background: none;
-  border: none;
+  background: var(--card);
+  border: 1px solid var(--border);
   color: var(--text);
-  font-size: 18px;
+  font-size: 15px;
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -144,17 +165,13 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.1s, background 0.15s;
 }
-.icon-btn:active { background: var(--border); }
-.settings-btn { font-size: 16px; color: var(--muted); }
-
-.topbar-history-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 17px;
-  font-weight: 700;
+.icon-btn:active {
+  transform: scale(0.92);
+  background: var(--border);
 }
+.settings-btn { font-size: 15px; color: var(--muted); }
 
 .view-container {
   display: flex;
@@ -162,187 +179,91 @@ body {
   width: 100%;
 }
 
-/* Summary Card */
+/* ==========================================================================
+   SUMMARY CARD (WITH INTEGRATED WEIGHT, STEPS, DYNAMICS)
+   ========================================================================== */
+
 .summary-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 16px 18px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  padding: 12px 14px 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
   user-select: none;
-}
-.summary-card:hover {
-  border-color: var(--muted);
-}
-
-.summary-heading-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 2px;
-}
-
-.expand-icon {
-  font-size: 13px;
-  color: var(--muted);
-  transition: transform 0.2s ease;
-}
-.expand-icon.open {
-  transform: rotate(180deg);
-}
-
-.dynamics-drawer {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
-}
-.dynamics-header {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-bottom: 8px;
-}
-.dynamics-chart {
-  width: 100%;
-  height: 110px;
-  overflow: visible;
-}
-
-/* Extra Metrics Row (weight & steps) */
-.extra-metrics-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 8px 16px;
-  margin-top: 10px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 600;
-}
-.extra-metric {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.extra-divider {
-  color: var(--muted);
-}
-
-/* Day Tabs (Chat vs Meals) */
-.day-tabs-bar {
-  display: flex;
-  gap: 8px;
-  margin: 14px 0 10px;
-}
-.day-tab-btn {
-  flex: 1;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-.day-tab-btn:hover {
-  background: var(--bg);
-}
-.day-tab-btn.active {
-  background: var(--text);
-  color: var(--card);
-  border-color: var(--text);
-}
-.day-tab-btn .badge {
-  background: rgba(128,128,128,0.25);
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 10px;
-}
-.tab-pane {
-  display: none;
-}
-.tab-pane.active {
-  display: block;
 }
 
 .summary-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.summary-kcal-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .summary-heading {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   margin-bottom: 2px;
 }
 
 .kcal-row {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.02em;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 .kcal-row .unit {
-  font-size: 13px;
-  font-weight: 400;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--muted);
-  margin-left: 4px;
+  margin-left: 2px;
 }
 .muted { color: var(--muted); font-weight: 400; }
 
 .kcal-left {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
-  margin-top: 2px;
-  font-weight: 500;
+  margin-top: 3px;
+  font-weight: 600;
 }
 .kcal-left.over { color: var(--danger); }
 
 .macros-grid {
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .macro-pill {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px 12px;
+  border-radius: 9px;
+  padding: 4px 6px;
   text-align: center;
-  min-width: 76px;
+  min-width: 54px;
 }
 .macro-title {
   display: block;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 9px;
+  font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
 }
 .macro-val {
   display: block;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
-  margin-top: 2px;
+  margin-top: 1px;
+  white-space: nowrap;
 }
 .macro-val b {
   font-weight: 800;
@@ -354,10 +275,10 @@ body {
 }
 
 .bar {
-  height: 6px;
+  height: 5px;
   background: var(--border);
   border-radius: 3px;
-  margin-top: 16px;
+  margin: 9px 0 8px;
   overflow: hidden;
 }
 .bar-fill {
@@ -365,6 +286,137 @@ body {
   background: var(--accent);
   width: 0%;
   transition: width .2s ease;
+  border-radius: 3px;
+}
+
+/* Card footer: Weight, Steps, Dynamics toggle */
+.summary-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.footer-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  color: var(--text);
+}
+.footer-metric:active {
+  background: var(--border);
+}
+.footer-divider {
+  color: var(--muted);
+  font-size: 10px;
+}
+.footer-spacer {
+  flex: 1;
+}
+
+.dynamics-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+.dynamics-toggle-btn:active {
+  color: var(--text);
+  background: var(--border);
+}
+
+.expand-icon {
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+.expand-icon.open {
+  transform: rotate(180deg);
+}
+
+.dynamics-drawer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.dynamics-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.dynamics-chart {
+  width: 100%;
+  height: 75px;
+  overflow: visible;
+}
+
+/* ==========================================================================
+   DAY TABS (IOS SEGMENTED CONTROL)
+   ========================================================================== */
+
+.day-tabs-bar {
+  display: flex;
+  background: var(--border);
+  border-radius: 12px;
+  padding: 3px;
+  gap: 4px;
+  margin: 8px 0 6px;
+}
+.day-tab-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.day-tab-btn:hover {
+  color: var(--text);
+}
+.day-tab-btn.active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  font-weight: 700;
+}
+.day-tab-btn .badge {
+  background: rgba(128, 128, 128, 0.15);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+.tab-pane {
+  display: none;
+}
+.tab-pane.active {
+  display: block;
 }
 
 .meals-header-row {
@@ -1173,8 +1225,8 @@ body {
 .chat-messages {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 0 12px;
+  gap: 8px;
+  padding: 6px 0 10px;
 }
 
 .chat-msg { display: flex; }
@@ -1182,12 +1234,13 @@ body {
 .chat-msg.assistant { justify-content: flex-start; }
 
 .chat-bubble {
-  max-width: 84%;
-  padding: 10px 13px;
-  border-radius: 14px;
+  max-width: 86%;
+  padding: 8px 12px;
+  border-radius: 16px;
   font-size: 14px;
   line-height: 1.4;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 .chat-msg.user .chat-bubble {
   background: var(--accent);
@@ -1197,6 +1250,7 @@ body {
 .chat-msg.assistant .chat-bubble {
   background: var(--card);
   border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
   border-bottom-left-radius: 4px;
 }
 
@@ -1495,12 +1549,12 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  max-width: 680px;
+  max-width: 600px;
   margin: 0 auto;
-  padding: 8px 16px 16px;
-  background: linear-gradient(to top, var(--bg) 85%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  padding: 4px 10px calc(8px + env(safe-area-inset-bottom, 12px));
+  background: linear-gradient(to top, var(--bg) 88%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   z-index: 40;
 }
 
@@ -1508,16 +1562,17 @@ body {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 .suggestion-chips::-webkit-scrollbar {
   display: none;
 }
 .chip-btn {
   flex-shrink: 0;
-  padding: 6px 12px;
-  border-radius: 20px;
+  padding: 5px 10px;
+  border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
@@ -1531,16 +1586,16 @@ body {
   background: var(--border);
 }
 .chip-btn:active {
-  transform: scale(0.96);
+  transform: scale(0.95);
 }
 
 .chat-input-row {
   position: relative;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 6px 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  border-radius: 24px;
+  padding: 4px 6px 4px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.07);
 }
 .chat-input-controls {
   display: flex;
@@ -1550,9 +1605,9 @@ body {
 .chat-tool-btn {
   background: none;
   border: none;
-  font-size: 18px;
-  width: 36px;
-  height: 36px;
+  font-size: 17px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -1565,6 +1620,9 @@ body {
 .chat-tool-btn:hover {
   background: var(--border);
   color: var(--text);
+}
+.chat-tool-btn:active {
+  transform: scale(0.92);
 }
 .voice-btn.recording {
   background: #ef4444 !important;
@@ -1582,28 +1640,30 @@ body {
   background: transparent;
   color: var(--text);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 16px; /* Prevents mobile Safari auto-zoom */
   resize: none;
-  padding: 8px 4px;
-  max-height: 120px;
+  padding: 6px 2px;
+  max-height: 100px;
   outline: none;
+  line-height: 1.35;
 }
 .chat-send-btn {
   background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 50%;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: opacity 0.15s, transform 0.1s;
   flex-shrink: 0;
+  font-size: 14px;
 }
 .chat-send-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 .chat-send-btn:active {

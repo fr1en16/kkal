@@ -20,11 +20,11 @@
 
     <!-- Date navigation for Day View -->
     <div class="topbar-date" id="topbarDate">
-      <button class="icon-btn" id="prevDay" title="Предыдущий день">‹</button>
+      <button class="icon-btn-date" id="prevDay" title="Предыдущий день">‹</button>
       <div class="date" id="dateLabel" style="cursor: pointer;" title="Нажмите для выбора даты">Сегодня</div>
       <input type="date" id="datePickerInput" style="position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;" />
-      <button class="icon-btn" id="nextDay" title="Следующий день">›</button>
-      <button class="today-btn" id="todayBtn" title="Перейти на сегодня">Сегодня</button>
+      <button class="icon-btn-date" id="nextDay" title="Следующий день">›</button>
+      <button class="today-btn" id="todayBtn" title="Перейти на сегодня" hidden>Сегодня</button>
     </div>
 
     <!-- History navigation header (shown when on history view) -->
@@ -42,14 +42,11 @@
   <!-- VIEW 1: DAY VIEW (TODAY OR DETAILED DAY) -->
   <section class="view-container" id="dayView">
     
-    <!-- SUMMARY CARD (TAP EXPANDS 14-DAY DYNAMICS) -->
-    <div class="summary-card" id="summaryCard" title="Нажмите, чтобы развернуть динамику за 14 дней">
+    <!-- SUMMARY CARD WITH INTEGRATED WEIGHT, STEPS AND DYNAMICS -->
+    <div class="summary-card" id="summaryCard">
       <div class="summary-top">
         <div class="summary-kcal-info">
-          <div class="summary-heading-row">
-            <span class="summary-heading">Калории за день</span>
-            <span class="expand-icon" id="dynamicsExpandIcon">▾</span>
-          </div>
+          <div class="summary-heading">Калории за день</div>
           <div class="kcal-row">
             <span id="kcalEaten">0</span><span class="muted">/</span><span id="kcalGoal" class="muted">2000</span>
             <span class="unit">ккал</span>
@@ -75,26 +72,31 @@
 
       <div class="bar"><div class="bar-fill" id="kcalBar"></div></div>
 
+      <!-- INTEGRATED METRICS FOOTER (WEIGHT, STEPS, DYNAMICS) -->
+      <div class="summary-footer-row" id="extraMetricsRow">
+        <div class="footer-metric clickable" id="extraWeightWrap" role="button" tabindex="0" title="Нажмите для редактирования веса">
+          <span class="extra-emoji">⚖️</span>
+          <span class="extra-val" id="extraWeightVal">не указан</span>
+        </div>
+        <div class="footer-divider" id="extraDivider">·</div>
+        <div class="footer-metric clickable" id="extraStepsWrap" role="button" tabindex="0" title="Нажмите для редактирования шагов">
+          <span class="extra-emoji">👟</span>
+          <span class="extra-val" id="extraStepsVal">0 шагов</span>
+        </div>
+        <div class="footer-spacer"></div>
+        <button class="dynamics-toggle-btn" id="toggleDynamicsBtn" type="button" title="Динамика за 14 дней">
+          <span>Динамика</span>
+          <span class="expand-icon" id="dynamicsExpandIcon">▾</span>
+        </button>
+      </div>
+
       <!-- 14-day dynamics collapsible drawer -->
       <div class="dynamics-drawer" id="dynamicsDrawer" hidden>
         <div class="dynamics-header">
           <span>Динамика калорий за 14 дней</span>
           <span class="muted" id="dynamicsTargetLabel">Цель: 2 000 ккал</span>
         </div>
-        <svg id="dynamicsChart" class="dynamics-chart" viewBox="0 0 320 110" preserveAspectRatio="none"></svg>
-      </div>
-    </div>
-
-    <!-- EXTRA ROW: WEIGHT AND STEPS -->
-    <div class="extra-metrics-row" id="extraMetricsRow">
-      <div class="extra-metric clickable" id="extraWeightWrap" role="button" tabindex="0" title="Нажмите для редактирования веса">
-        <span class="extra-emoji">⚖️</span>
-        <span class="extra-val" id="extraWeightVal">не указан</span>
-      </div>
-      <div class="extra-divider" id="extraDivider">·</div>
-      <div class="extra-metric clickable" id="extraStepsWrap" role="button" tabindex="0" title="Нажмите для редактирования шагов">
-        <span class="extra-emoji">👟</span>
-        <span class="extra-val" id="extraStepsVal">0 шагов</span>
+        <svg id="dynamicsChart" class="dynamics-chart" viewBox="0 0 320 80" preserveAspectRatio="none"></svg>
       </div>
     </div>
 

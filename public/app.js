@@ -418,6 +418,8 @@ function applyDayData(data) {
 async function loadDay(date) {
   currentDate = date || currentDate;
   document.getElementById('dateLabel').textContent = fmtDateLabel(currentDate);
+  const todayBtn = document.getElementById('todayBtn');
+  if (todayBtn) todayBtn.hidden = (currentDate === todayStr());
   updateInputPlaceholder();
 
   const cacheKey = 'day_' + currentDate;
@@ -486,11 +488,11 @@ async function renderDynamicsChart() {
   });
 
   const maxKcal = Math.max(goal * 1.25, ...chartData.map((d) => d.calories));
-  const W = 320, H = 110, PAD_TOP = 14, PAD_BTM = 18, PAD_X = 8;
+  const W = 320, H = 80, PAD_TOP = 8, PAD_BTM = 16, PAD_X = 6;
   const chartH = H - PAD_TOP - PAD_BTM;
   const numBars = chartData.length;
   const slotW = (W - PAD_X * 2) / numBars;
-  const barW = Math.max(6, slotW - 4);
+  const barW = Math.max(8, slotW - 6);
   const ns = 'http://www.w3.org/2000/svg';
 
   // Goal line
@@ -501,22 +503,36 @@ async function renderDynamicsChart() {
   goalLine.setAttribute('x2', W - PAD_X);
   goalLine.setAttribute('y1', goalY);
   goalLine.setAttribute('y2', goalY);
+  goalLine.setAttribute('stroke', 'var(--muted)');
+  goalLine.setAttribute('stroke-dasharray', '3 3');
+  goalLine.setAttribute('stroke-opacity', '0.4');
   svg.appendChild(goalLine);
 
   chartData.forEach((d, i) => {
     const x = PAD_X + i * slotW + (slotW - barW) / 2;
-    const barH = d.calories > 0 ? Math.max(3, (d.calories / maxKcal) * chartH) : 0;
+    const barH = d.calories > 0 ? Math.max(4, (d.calories / maxKcal) * chartH) : 0;
     const y = PAD_TOP + chartH - barH;
+
+    // Background track slot
+    const bgSlot = document.createElementNS(ns, 'rect');
+    bgSlot.setAttribute('fill', 'var(--border)');
+    bgSlot.setAttribute('x', x);
+    bgSlot.setAttribute('y', PAD_TOP);
+    bgSlot.setAttribute('width', barW);
+    bgSlot.setAttribute('height', chartH);
+    bgSlot.setAttribute('rx', 3);
+    bgSlot.setAttribute('opacity', '0.3');
+    svg.appendChild(bgSlot);
 
     if (barH > 0) {
       const rect = document.createElementNS(ns, 'rect');
       const isExceeded = d.calories > d.goal;
-      rect.setAttribute('fill', isExceeded ? '#ef4444' : '#22c55e');
+      rect.setAttribute('fill', isExceeded ? '#ef4444' : 'var(--accent)');
       rect.setAttribute('x', x);
       rect.setAttribute('y', y);
       rect.setAttribute('width', barW);
       rect.setAttribute('height', barH);
-      rect.setAttribute('rx', 2.5);
+      rect.setAttribute('rx', 3);
 
       const title = document.createElementNS(ns, 'title');
       title.textContent = `${d.date}: ${round(d.calories)} ккал (цель ${d.goal})`;
@@ -535,7 +551,10 @@ async function renderDynamicsChart() {
       const text = document.createElementNS(ns, 'text');
       text.setAttribute('class', 'chart-label');
       text.setAttribute('x', x + barW / 2);
-      text.setAttribute('y', H - 4);
+      text.setAttribute('y', H - 2);
+      text.setAttribute('font-size', '9');
+      text.setAttribute('fill', 'var(--muted)');
+      text.setAttribute('text-anchor', 'middle');
       text.textContent = dt.getDate();
       svg.appendChild(text);
     }
@@ -1565,8 +1584,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tabBtnChat').onclick = () => setDayTab('chat');
   document.getElementById('tabBtnMeals').onclick = () => setDayTab('meals');
 
-  // Summary card tap dynamics
-  document.getElementById('summaryCard').onclick = toggleDynamics;
+  // Dynamics toggle button
+  const toggleDynBtn = document.getElementById('toggleDynamicsBtn');
+  if (toggleDynBtn) {
+    toggleDynBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleDynamics();
+    };
+  }
 
   // Suggestion chips
   document.querySelectorAll('.chip-btn[data-fill]').forEach((btn) => {
