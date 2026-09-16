@@ -487,25 +487,10 @@ function addDays(dateStr, n) {
 }
 
 function switchTab(tab) {
-  activeTab = tab;
-  document.getElementById('diaryView').hidden = tab !== 'diary';
-  document.getElementById('stepsView').hidden = tab !== 'steps';
-  document.getElementById('weightView').hidden = tab !== 'weight';
-  document.getElementById('productsView').hidden = tab !== 'products';
-  document.getElementById('chatView').hidden = tab !== 'chat';
-  document.querySelector('.topbar').hidden = tab !== 'diary';
-  document.querySelector('.summary').hidden = tab !== 'diary';
-  document.getElementById('tabDiary').classList.toggle('active', tab === 'diary');
-  document.getElementById('tabSteps').classList.toggle('active', tab === 'steps');
-  document.getElementById('tabWeight').classList.toggle('active', tab === 'weight');
-  document.getElementById('tabProducts').classList.toggle('active', tab === 'products');
-  document.getElementById('tabChat').classList.toggle('active', tab === 'chat');
-  document.getElementById('chatInputBar').hidden = tab !== 'chat';
-  document.getElementById('fabAdd').hidden = tab === 'chat';
+  activeTab = tab || 'diary';
   if (tab === 'steps') loadSteps();
   if (tab === 'weight') loadWeight();
   if (tab === 'products') loadProducts();
-  if (tab === 'chat') initChat();
 }
 
 function guessMealByTime() {
@@ -630,7 +615,7 @@ async function addChatItem(msg, item) {
     }),
   });
   item.added = true;
-  if (activeTab === 'diary') loadDay();
+  loadDay();
 }
 
 function chatMsgSummary(m) {
@@ -1133,16 +1118,46 @@ document.getElementById('nextDay').onclick = () => {
   loadDay();
 };
 document.getElementById('fabAdd').onclick = () => {
-  if (activeTab === 'weight') openWeightSheet();
-  else if (activeTab === 'steps') openStepsSheet();
-  else if (activeTab === 'products') openProductSheet();
-  else openAddSheet(currentMeal, MEALS.find((m) => m.key === currentMeal).label);
+  openAddSheet(currentMeal, MEALS.find((m) => m.key === currentMeal).label);
 };
-document.getElementById('tabDiary').onclick = () => switchTab('diary');
-document.getElementById('tabSteps').onclick = () => switchTab('steps');
-document.getElementById('tabWeight').onclick = () => switchTab('weight');
-document.getElementById('tabProducts').onclick = () => switchTab('products');
-document.getElementById('tabChat').onclick = () => switchTab('chat');
+
+const todayBtn = document.getElementById('todayBtn');
+if (todayBtn) {
+  todayBtn.onclick = () => {
+    currentDate = todayStr();
+    loadDay();
+  };
+}
+
+function openProductsSheet() {
+  loadProducts();
+  document.getElementById('productsOverlay').classList.add('open');
+}
+
+const openProductsBtn = document.getElementById('openProductsBtn');
+if (openProductsBtn) {
+  openProductsBtn.onclick = () => openProductsSheet();
+}
+
+const closeProductsSheet = document.getElementById('closeProductsSheet');
+if (closeProductsSheet) {
+  closeProductsSheet.onclick = () => document.getElementById('productsOverlay').classList.remove('open');
+}
+
+const btnAddNewProduct = document.getElementById('btnAddNewProduct');
+if (btnAddNewProduct) {
+  btnAddNewProduct.onclick = () => openProductSheet();
+}
+
+const openWeightBtn = document.getElementById('openWeightBtn');
+if (openWeightBtn) {
+  openWeightBtn.onclick = () => openWeightSheet();
+}
+
+const addMealQuickBtn = document.getElementById('addMealQuickBtn');
+if (addMealQuickBtn) {
+  addMealQuickBtn.onclick = () => openAddSheet(currentMeal, MEALS.find((m) => m.key === currentMeal).label);
+}
 
 document.getElementById('closeSteps').onclick = () => document.getElementById('stepsOverlay').classList.remove('open');
 document.getElementById('stepsOverlay').onclick = (e) => {
@@ -1161,7 +1176,10 @@ document.querySelectorAll('.quick-step-btn').forEach((btn) => {
 
 document.getElementById('chatSend').onclick = sendChatMessage;
 document.getElementById('chatText').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendChatMessage();
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
 });
 document.getElementById('chatPhotoBtn').onclick = () => document.getElementById('chatPhotoInput').click();
 document.getElementById('chatPhotoInput').onchange = (e) => {
@@ -1234,4 +1252,7 @@ document.getElementById('saveSettings').onclick = saveSettings;
   if (cachedDay) applyDay(cachedDay);
 
   loadDay();
+  loadSteps();
+  loadWeight();
+  initChat();
 })();

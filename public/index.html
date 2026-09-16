@@ -8,124 +8,207 @@
 </head>
 <body>
 
-<div class="app">
+<div class="app-layout">
 
-  <div class="topbar">
-    <button class="icon-btn" id="prevDay">‹</button>
-    <div class="date" id="dateLabel">Сегодня</div>
-    <button class="icon-btn" id="nextDay">›</button>
-  </div>
-
-  <div class="summary">
-    <div class="kcal-row">
-      <span id="kcalEaten">0</span><span class="muted">/</span><span id="kcalGoal" class="muted">2000</span>
-      <span class="unit">ккал</span>
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-title">kkal</span>
     </div>
-    <div class="kcal-left" id="kcalLeft">Осталось 0 ккал</div>
-    <div class="macros">
-      <span>Б <b id="pEaten">0</b>/<span id="pGoal">0</span></span>
-      <span>Ж <b id="fEaten">0</b>/<span id="fGoal">0</span></span>
-      <span>У <b id="cEaten">0</b>/<span id="cGoal">0</span></span>
-    </div>
-    <div class="bar"><div class="bar-fill" id="kcalBar"></div></div>
-  </div>
 
-  <div id="diaryView">
-    <div class="steps-widget" id="diaryStepsCard">
-      <div class="steps-widget-top">
-        <div class="steps-widget-title">
-          <span>Шаги</span>
-          <span class="steps-widget-numbers"><b id="diaryStepsCount">0</b> <span class="muted">/ <span id="diaryStepsGoal">10 000</span></span></span>
+    <div class="topbar-date">
+      <button class="icon-btn" id="prevDay" title="Предыдущий день">‹</button>
+      <div class="date" id="dateLabel">Сегодня</div>
+      <button class="icon-btn" id="nextDay" title="Следующий день">›</button>
+      <button class="today-btn" id="todayBtn">Сегодня</button>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="topbar-btn" id="openProductsBtn" title="База продуктов">
+        <span>📖</span> <span class="btn-text">Продукты</span>
+      </button>
+      <button class="icon-btn settings-btn" id="openSettings" title="Настройки">⚙</button>
+    </div>
+  </header>
+
+  <main class="dashboard-grid">
+
+    <!-- LEFT COLUMN: DIARY & MEALS -->
+    <section class="dashboard-col col-diary">
+      
+      <div class="summary-card">
+        <div class="summary-top">
+          <div class="summary-kcal-info">
+            <div class="summary-heading">Калории за день</div>
+            <div class="kcal-row">
+              <span id="kcalEaten">0</span><span class="muted">/</span><span id="kcalGoal" class="muted">2000</span>
+              <span class="unit">ккал</span>
+            </div>
+            <div class="kcal-left" id="kcalLeft">Осталось 0 ккал</div>
+          </div>
+
+          <div class="macros-grid">
+            <div class="macro-pill macro-protein">
+              <span class="macro-title">Белки</span>
+              <span class="macro-val"><b id="pEaten">0</b>/<span id="pGoal">0</span>г</span>
+            </div>
+            <div class="macro-pill macro-fat">
+              <span class="macro-title">Жиры</span>
+              <span class="macro-val"><b id="fEaten">0</b>/<span id="fGoal">0</span>г</span>
+            </div>
+            <div class="macro-pill macro-carbs">
+              <span class="macro-title">Углеводы</span>
+              <span class="macro-val"><b id="cEaten">0</b>/<span id="cGoal">0</span>г</span>
+            </div>
+          </div>
         </div>
-        <button class="steps-widget-btn" id="diaryStepsEdit">Записать</button>
+
+        <div class="bar"><div class="bar-fill" id="kcalBar"></div></div>
       </div>
-      <div class="bar steps-bar"><div class="bar-fill steps-bar-fill" id="diaryStepsBar"></div></div>
-      <div class="steps-widget-meta">
-        <span><span id="diaryStepsDist">0.0</span> км · <span id="diaryStepsKcal">0</span> ккал</span>
-        <span class="steps-widget-percent" id="diaryStepsPct">0%</span>
+
+      <div class="meals-header-row">
+        <h2 class="section-title">Приёмы пищи</h2>
+        <button class="primary-ghost-btn" id="addMealQuickBtn">+ Добавить блюдо</button>
+      </div>
+
+      <div id="meals"></div>
+    </section>
+
+    <!-- RIGHT COLUMN: AI COPILOT & ACTIVITY WIDGETS -->
+    <aside class="dashboard-col col-widgets">
+
+      <!-- AI ASSISTANT -->
+      <div class="widget-card ai-card">
+        <div class="widget-header">
+          <div class="widget-title">
+            <span class="widget-badge">✨</span>
+            <span>Умный AI-помощник</span>
+          </div>
+          <select class="field-select chat-meal-select" id="chatMeal" title="Приём пищи для записи">
+            <option value="breakfast">В Завтрак</option>
+            <option value="lunch">В Обед</option>
+            <option value="dinner">В Ужин</option>
+            <option value="snack">В Перекус</option>
+          </select>
+        </div>
+
+        <div class="ai-input-box">
+          <textarea class="ai-input-field" id="chatText" placeholder="Напишите или загрузите фото того, что съели…" rows="2"></textarea>
+          <div class="ai-input-bar">
+            <div class="ai-input-left">
+              <img id="chatPhotoThumb" class="chat-photo-thumb" hidden />
+              <button class="action-btn" id="chatPhotoBtn" type="button">📷 Фото</button>
+              <input type="file" id="chatPhotoInput" accept="image/*" capture="environment" hidden />
+            </div>
+            <button class="chat-send-btn" id="chatSend" type="button">Распознать ➤</button>
+          </div>
+        </div>
+
+        <div id="chatMessages" class="chat-messages"></div>
+      </div>
+
+      <!-- STEPS WIDGET -->
+      <div class="widget-card steps-card" id="diaryStepsCard">
+        <div class="widget-header">
+          <div class="widget-title">
+            <span class="widget-emoji">👟</span>
+            <span>Шаги и активность</span>
+          </div>
+          <button class="action-btn" id="diaryStepsEdit">Записать</button>
+        </div>
+
+        <div class="steps-metrics">
+          <div class="metric-item">
+            <div class="metric-lbl">Шаги</div>
+            <div class="metric-num"><b id="diaryStepsCount">0</b></div>
+            <div class="metric-sub">Цель: <span id="diaryStepsGoal">10 000</span> (<span id="diaryStepsPct">0%</span>)</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-lbl">Дистанция</div>
+            <div class="metric-num"><span id="diaryStepsDist">0.0</span> <span class="unit-sm">км</span></div>
+            <div class="metric-sub"><span id="stepsStatDist" hidden>0.0</span>активность</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-lbl">Сожжено</div>
+            <div class="metric-num"><span id="diaryStepsKcal">0</span> <span class="unit-sm">ккал</span></div>
+            <div class="metric-sub"><span id="stepsStatKcal" hidden>0</span>расход</div>
+          </div>
+        </div>
+
+        <div class="bar steps-bar"><div class="bar-fill steps-bar-fill" id="diaryStepsBar"></div></div>
+
+        <!-- Chart -->
+        <div class="chart-block">
+          <div class="chart-header">
+            <span>Динамика за 14 дней</span>
+            <span class="muted" id="stepsTargetStatus">Цель: 10 000</span>
+            <span id="stepsCurrent" hidden>0</span>
+            <span id="stepsStatAvg" hidden>0</span>
+          </div>
+          <svg id="stepsChart" class="steps-chart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+        </div>
+
+        <details class="history-accordion">
+          <summary>История записей шагов</summary>
+          <div id="stepsList" class="steps-history-list"></div>
+        </details>
+      </div>
+
+      <!-- WEIGHT WIDGET -->
+      <div class="widget-card weight-card">
+        <div class="widget-header">
+          <div class="widget-title">
+            <span class="widget-emoji">⚖️</span>
+            <span>Контроль веса</span>
+          </div>
+          <button class="action-btn" id="openWeightBtn">+ Взвеситься</button>
+        </div>
+
+        <div class="weight-status-row">
+          <div>
+            <div class="metric-lbl">Текущий вес</div>
+            <div class="weight-current"><span id="weightCurrent">—</span><span class="unit-sm">кг</span></div>
+          </div>
+          <div class="weight-delta-wrapper">
+            <div class="metric-lbl">Динамика</div>
+            <div class="weight-delta" id="weightDelta">—</div>
+          </div>
+        </div>
+
+        <div class="chart-block">
+          <svg id="weightChart" class="weight-chart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+        </div>
+
+        <div id="weightPhotos" class="weight-photos"></div>
+
+        <details class="history-accordion">
+          <summary>История замеров</summary>
+          <div id="weightList" class="weight-history-list"></div>
+        </details>
+      </div>
+
+    </aside>
+
+  </main>
+
+</div>
+
+<button class="fab" id="fabAdd" title="Добавить еду">+</button>
+
+<!-- Products sheet / modal -->
+<div class="overlay" id="productsOverlay">
+  <div class="sheet sheet-wide">
+    <div class="sheet-header">
+      <span>База продуктов</span>
+      <div class="sheet-actions">
+        <button class="action-btn" id="btnAddNewProduct">+ Новый продукт</button>
+        <button class="text-btn" id="closeProductsSheet">✕</button>
       </div>
     </div>
-    <div id="meals"></div>
-  </div>
-
-  <div id="stepsView" hidden>
-    <div class="weight-header">Дневник шагов</div>
-    <div class="steps-summary">
-      <div class="steps-current"><span id="stepsCurrent">0</span><span class="unit">шагов</span></div>
-      <div class="steps-target-status" id="stepsTargetStatus">Цель: 10 000</div>
-      <div class="steps-stats-row">
-        <div class="steps-stat-item">
-          <div class="steps-stat-val" id="stepsStatDist">0.0</div>
-          <div class="steps-stat-lbl">км</div>
-        </div>
-        <div class="steps-stat-item">
-          <div class="steps-stat-val" id="stepsStatKcal">0</div>
-          <div class="steps-stat-lbl">ккал</div>
-        </div>
-        <div class="steps-stat-item">
-          <div class="steps-stat-val" id="stepsStatAvg">0</div>
-          <div class="steps-stat-lbl">ср./день</div>
-        </div>
-      </div>
-    </div>
-    <div class="steps-chart-box">
-      <div class="steps-chart-title">График за последние 14 дней</div>
-      <svg id="stepsChart" class="steps-chart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
-    </div>
-    <div class="section-label">История шагов</div>
-    <div id="stepsList"></div>
-  </div>
-
-  <div id="weightView" hidden>
-    <div class="weight-header">Вес</div>
-    <div class="weight-summary">
-      <div class="weight-current"><span id="weightCurrent">—</span><span class="unit">кг</span></div>
-      <div class="weight-delta" id="weightDelta"></div>
-    </div>
-    <svg id="weightChart" class="weight-chart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
-    <div id="weightPhotos" class="weight-photos"></div>
-    <div id="weightList"></div>
-  </div>
-
-  <div id="productsView" hidden>
-    <div class="weight-header">Продукты</div>
-    <input class="field products-search" id="productsSearch" placeholder="Поиск продукта" autocomplete="off" />
+    <input class="field products-search" id="productsSearch" placeholder="Поиск продукта…" autocomplete="off" />
     <div id="productsList"></div>
   </div>
-
-  <div id="chatView" hidden>
-    <div class="chat-meal-row">
-      <select class="field chat-meal-select" id="chatMeal">
-        <option value="breakfast">Завтрак</option>
-        <option value="lunch">Обед</option>
-        <option value="dinner">Ужин</option>
-        <option value="snack">Перекус</option>
-      </select>
-    </div>
-    <div id="chatMessages" class="chat-messages"></div>
-  </div>
-
 </div>
-
-<div class="chat-input-bar" id="chatInputBar" hidden>
-  <img id="chatPhotoThumb" class="chat-photo-thumb" hidden />
-  <button class="icon-btn" id="chatPhotoBtn">📷</button>
-  <input type="file" id="chatPhotoInput" accept="image/*" capture="environment" hidden />
-  <input class="field chat-text-input" id="chatText" placeholder="Напишите, что съели…" autocomplete="off" />
-  <button class="chat-send-btn" id="chatSend">➤</button>
-</div>
-
-<button class="icon-btn settings-btn settings-fab" id="openSettings">⚙</button>
-
-<div class="tabbar">
-  <button class="tab-btn active" id="tabDiary" data-tab="diary">Дневник</button>
-  <button class="tab-btn" id="tabSteps" data-tab="steps">Шаги</button>
-  <button class="tab-btn" id="tabWeight" data-tab="weight">Вес</button>
-  <button class="tab-btn" id="tabProducts" data-tab="products">Продукты</button>
-  <button class="tab-btn" id="tabChat" data-tab="chat">Чат</button>
-</div>
-
-<button class="fab" id="fabAdd">+</button>
 
 <!-- Add entry modal -->
 <div class="overlay" id="addOverlay">
