@@ -220,10 +220,31 @@ app.post('/api/ai/chat', upload.any(), asyncHandler(async (req, res) => {
   const currentMeal = req.body.meal || 'breakfast';
   const settings = await getSettings(targetDate);
 
+  const rawUserText = (req.body.text || '').trim();
+
+  // If history is not provided by the client, fetch recent messages from DB for context
+  if (!history.length) {
+    try {
+      const prevRes = await db.query(
+        'SELECT role, text FROM kkal.chat_messages WHERE date = $1 ORDER BY id DESC LIMIT 10',
+        [targetDate]
+      );
+      history = prevRes.rows.reverse();
+    } catch {
+      history = [];
+    }
+  }
+
+  const userMsgText = rawUserText || (images.length > 0 ? (images.length > 1 ? `[${images.length} фото]` : '[фото]') : '');
+  if (userMsgText) {
+    history.push({ role: 'user', text: userMsgText });
+  }
+
   const result = await chatParseFood({
     provider: AI_PROVIDER,
     apiKey: AI_API_KEYS[AI_PROVIDER],
     model: AI_MODEL,
+    text: rawUserText,
     history,
     images,
     date: targetDate,
@@ -232,7 +253,6 @@ app.post('/api/ai/chat', upload.any(), asyncHandler(async (req, res) => {
     currentSettings: settings,
   });
 
-  const lastUserText = req.body.text || (history.length > 0 ? history[history.length - 1].text : '');
   const source = images.length > 0 ? 'chat_photo' : (req.body.is_voice === 'true' ? 'chat_voice' : 'chat_text');
 
   let createdEntries = [];
@@ -347,11 +367,10 @@ app.post('/api/ai/chat', upload.any(), asyncHandler(async (req, res) => {
   }
 
   // Save conversation into kkal.chat_messages
-  const userText = lastUserText || (images.length > 0 ? (images.length > 1 ? `[${images.length} фото]` : '[фото]') : '');
-  if (userText) {
+  if (userMsgText) {
     await db.query(
       'INSERT INTO kkal.chat_messages (date, role, text, meta) VALUES ($1, $2, $3, $4)',
-      [targetDate, 'user', userText, JSON.stringify({ source })]
+      [targetDate, 'user', userMsgText, JSON.stringify({ source })]
     ).catch(() => {});
   }
 
