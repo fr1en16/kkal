@@ -723,15 +723,46 @@ body {
 }
 
 .ai-input-box {
+  position: relative;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 12px 8px;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, background 0.2s ease;
 }
 .ai-input-box:focus-within {
   border-color: var(--accent);
   background: var(--card);
+}
+.ai-input-box.dragover {
+  border-color: var(--accent);
+  border-style: dashed;
+  background: var(--accent-soft);
+}
+
+.drag-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--card);
+  border-radius: 12px;
+  border: 2px dashed var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+}
+.drag-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 13px;
+}
+.drag-icon {
+  font-size: 24px;
 }
 
 .ai-input-field {
@@ -744,6 +775,62 @@ body {
   line-height: 1.4;
   resize: none;
   outline: none;
+}
+
+.chat-photos-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 6px 0;
+  border-top: 1px dashed var(--border);
+}
+.chat-photo-item {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--card);
+  flex-shrink: 0;
+}
+.chat-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.chat-photo-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s ease;
+}
+.chat-photo-remove:hover {
+  background: var(--danger);
+}
+
+.chat-drag-hint {
+  font-size: 11px;
+  color: var(--muted);
+  user-select: none;
+}
+@media (max-width: 600px) {
+  .chat-drag-hint { display: none; }
 }
 
 .ai-input-bar {
@@ -762,29 +849,43 @@ body {
 }
 
 .chat-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: none;
   background: var(--accent);
   color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(253, 75, 50, 0.25);
+  transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 .chat-send-btn:hover {
-  opacity: 0.9;
+  opacity: 0.94;
+  box-shadow: 0 4px 10px rgba(253, 75, 50, 0.35);
+  transform: translateY(-1px);
+}
+.chat-send-btn:active {
+  transform: translateY(0);
 }
 .chat-send-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
-
-.chat-photo-thumb {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  object-fit: cover;
+.chat-send-btn .send-arrow {
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+.chat-send-btn:hover .send-arrow {
+  transform: translateX(2px);
 }
 
 /* Steps Metrics */
@@ -1037,38 +1138,23 @@ body {
 
 .chat-status { color: var(--muted); font-size: 13px; padding: 4px 0; }
 
-.chat-input-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 54px;
-  z-index: 41;
+.chat-bubble-photos {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
-  background: var(--card);
-  border-top: 1px solid var(--border);
-  max-width: 480px;
-  margin: 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
 }
-.chat-text-input { margin-bottom: 0; flex: 1; }
-.chat-send-btn {
-  flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  font-size: 16px;
-  cursor: pointer;
-}
-.chat-photo-thumb {
-  width: 36px;
-  height: 36px;
+.chat-bubble-photos .chat-bubble-photo {
+  width: 64px;
+  height: 64px;
   border-radius: 8px;
   object-fit: cover;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: transform 0.15s ease;
+}
+.chat-bubble-photos .chat-bubble-photo:hover {
+  transform: scale(1.04);
 }
 
 .lightbox-overlay {

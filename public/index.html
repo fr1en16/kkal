@@ -94,15 +94,28 @@
           </select>
         </div>
 
-        <div class="ai-input-box">
-          <textarea class="ai-input-field" id="chatText" placeholder="Напишите или загрузите фото того, что съели…" rows="2"></textarea>
+        <div class="ai-input-box" id="aiDropZone">
+          <textarea class="ai-input-field" id="chatText" placeholder="Напишите или перетащите фото того, что съели…" rows="2"></textarea>
+          
+          <div id="chatPhotosList" class="chat-photos-list" hidden></div>
+
           <div class="ai-input-bar">
             <div class="ai-input-left">
-              <img id="chatPhotoThumb" class="chat-photo-thumb" hidden />
               <button class="action-btn" id="chatPhotoBtn" type="button">📷 Фото</button>
-              <input type="file" id="chatPhotoInput" accept="image/*" capture="environment" hidden />
+              <input type="file" id="chatPhotoInput" accept="image/*" multiple hidden />
+              <span class="chat-drag-hint">или перетащите фото сюда</span>
             </div>
-            <button class="chat-send-btn" id="chatSend" type="button">Распознать ➤</button>
+            <button class="chat-send-btn" id="chatSend" type="button">
+              <span>Распознать</span>
+              <span class="send-arrow">➤</span>
+            </button>
+          </div>
+
+          <div class="drag-overlay" id="dragOverlay" hidden>
+            <div class="drag-overlay-content">
+              <span class="drag-icon">📥</span>
+              <span>Отпустите фото для загрузки</span>
+            </div>
           </div>
         </div>
 

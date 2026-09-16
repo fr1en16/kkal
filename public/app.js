@@ -13,7 +13,7 @@ let activeTab = 'diary';
 let weightPhotoFile = null;
 let pickedProduct = null;
 let chatHistory = [];
-let chatPhotoFile = null;
+let chatPhotoFiles = [];
 let chatSending = false;
 
 function toDateStr(d) {
@@ -621,11 +621,18 @@ function renderChatMessage(msg) {
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
 
-  if (msg.photoUrl) {
-    const img = document.createElement('img');
-    img.className = 'chat-bubble-photo';
-    img.src = msg.photoUrl;
-    bubble.appendChild(img);
+  const urls = msg.photoUrls || (msg.photoUrl ? [msg.photoUrl] : []);
+  if (urls.length > 0) {
+    const photosWrap = document.createElement('div');
+    photosWrap.className = 'chat-bubble-photos';
+    for (const url of urls) {
+      const img = document.createElement('img');
+      img.className = 'chat-bubble-photo';
+      img.src = url;
+      img.onclick = () => openLightbox(url);
+      photosWrap.appendChild(img);
+    }
+    bubble.appendChild(photosWrap);
   }
   if (msg.text) {
     const textEl = document.createElement('div');
@@ -720,21 +727,121 @@ function chatMsgSummary(m) {
   return parts.join('; ') || '(нет данных)';
 }
 
+function addChatPhotos(files) {
+  if (!files || files.length === 0) return;
+  const list = Array.from(files).filter((f) => f.type && f.type.startsWith('image/'));
+  for (const f of list) {
+    if (chatPhotoFiles.length >= 10) break;
+    chatPhotoFiles.push(f);
+  }
+  renderChatPhotosPreview();
+}
+
+function removeChatPhoto(index) {
+  chatPhotoFiles.splice(index, 1);
+  renderChatPhotosPreview();
+}
+
+function clearChatPhotos() {
+  chatPhotoFiles = [];
+  renderChatPhotosPreview();
+}
+
+function renderChatPhotosPreview() {
+  const container = document.getElementById('chatPhotosList');
+  if (!container) return;
+  container.innerHTML = '';
+  if (chatPhotoFiles.length === 0) {
+    container.hidden = true;
+    return;
+  }
+  container.hidden = false;
+  chatPhotoFiles.forEach((file, idx) => {
+    const item = document.createElement('div');
+    item.className = 'chat-photo-item';
+    const url = URL.createObjectURL(file);
+    item.innerHTML = `
+      <img src="${url}" title="${escapeHtml(file.name)}" />
+      <button class="chat-photo-remove" type="button" title="Удалить">✕</button>
+    `;
+    item.querySelector('img').onclick = () => openLightbox(url);
+    item.querySelector('.chat-photo-remove').onclick = (e) => {
+      e.stopPropagation();
+      removeChatPhoto(idx);
+    };
+    container.appendChild(item);
+  });
+}
+
+function setupChatDragAndDrop() {
+  const dropZone = document.getElementById('aiDropZone');
+  const dragOverlay = document.getElementById('dragOverlay');
+  if (!dropZone) return;
+
+  let dragCounter = 0;
+
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((eventName) => {
+    dropZone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  });
+
+  dropZone.addEventListener('dragenter', (e) => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+      dragCounter++;
+      dropZone.classList.add('dragover');
+      if (dragOverlay) dragOverlay.hidden = false;
+    }
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      dropZone.classList.remove('dragover');
+      if (dragOverlay) dragOverlay.hidden = true;
+    }
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    dragCounter = 0;
+    dropZone.classList.remove('dragover');
+    if (dragOverlay) dragOverlay.hidden = true;
+    const files = e.dataTransfer ? e.dataTransfer.files : [];
+    if (files && files.length > 0) {
+      addChatPhotos(files);
+    }
+  });
+}
+
 async function sendChatMessage() {
   if (chatSending) return;
   const textEl = document.getElementById('chatText');
   const text = textEl.value.trim();
-  const photoFile = chatPhotoFile;
-  if (!text && !photoFile) return;
+  const photos = [...chatPhotoFiles];
+  if (!text && photos.length === 0) return;
 
-  const userMsg = { role: 'user', text, photoUrl: photoFile ? URL.createObjectURL(photoFile) : null };
+  const photoUrls = photos.map((f) => URL.createObjectURL(f));
+  const userMsg = {
+    role: 'user',
+    text,
+    photoUrls,
+    photoUrl: photoUrls[0] || null,
+  };
   chatHistory.push(userMsg);
   const assistantMsg = { role: 'assistant', pending: true };
   chatHistory.push(assistantMsg);
   textEl.value = '';
-  clearChatPhoto();
+  clearChatPhotos();
   chatSending = true;
   renderChat();
+
+  const sendBtn = document.getElementById('chatSend');
+  if (sendBtn) {
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<span>Распознаю…</span>';
+  }
 
   try {
     const form = new FormData();
@@ -742,9 +849,12 @@ async function sendChatMessage() {
       .filter((m) => !m.pending)
       .slice(0, -1)
       .map((m) => ({ role: m.role, text: chatMsgSummary(m) }));
-    apiHistory.push({ role: 'user', text: text || '[фото]' });
+    const userLabel = text || (photos.length > 1 ? `[${photos.length} фото]` : '[фото]');
+    apiHistory.push({ role: 'user', text: userLabel });
     form.append('history', JSON.stringify(apiHistory));
-    if (photoFile) form.append('image', photoFile);
+    for (const p of photos) {
+      form.append('images', p);
+    }
     const res = await fetch('/api/ai/chat', { method: 'POST', body: form });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Ошибка запроса');
@@ -758,15 +868,12 @@ async function sendChatMessage() {
       : 'Не удалось обработать: ' + err.message;
   } finally {
     chatSending = false;
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.innerHTML = '<span>Распознать</span><span class="send-arrow">➤</span>';
+    }
     renderChat();
   }
-}
-
-function clearChatPhoto() {
-  chatPhotoFile = null;
-  const thumb = document.getElementById('chatPhotoThumb');
-  thumb.hidden = true;
-  thumb.src = '';
 }
 
 let editingProduct = null;
@@ -1462,13 +1569,10 @@ document.getElementById('chatText').addEventListener('keydown', (e) => {
 });
 document.getElementById('chatPhotoBtn').onclick = () => document.getElementById('chatPhotoInput').click();
 document.getElementById('chatPhotoInput').onchange = (e) => {
-  const file = e.target.files[0];
+  if (e.target.files && e.target.files.length > 0) {
+    addChatPhotos(e.target.files);
+  }
   e.target.value = '';
-  if (!file) return;
-  chatPhotoFile = file;
-  const thumb = document.getElementById('chatPhotoThumb');
-  thumb.src = URL.createObjectURL(file);
-  thumb.hidden = false;
 };
 
 document.getElementById('productsSearch').addEventListener('input', (e) => loadProducts(e.target.value));
@@ -1559,4 +1663,5 @@ document.getElementById('saveSettings').onclick = saveSettings;
   loadSteps();
   loadWeight();
   initChat();
+  setupChatDragAndDrop();
 })();

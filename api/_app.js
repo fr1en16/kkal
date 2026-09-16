@@ -173,16 +173,20 @@ app.post('/api/ai/analyze', upload.single('image'), asyncHandler(async (req, res
   res.json({ items });
 }));
 
-app.post('/api/ai/chat', upload.single('image'), asyncHandler(async (req, res) => {
+app.post('/api/ai/chat', upload.any(), asyncHandler(async (req, res) => {
   let history = [];
   try { history = JSON.parse(req.body.history || '[]'); } catch { history = []; }
+  const files = req.files || (req.file ? [req.file] : []);
+  const images = files.map((f) => ({
+    base64: f.buffer.toString('base64'),
+    mime: f.mimetype,
+  }));
   const result = await chatParseFood({
     provider: AI_PROVIDER,
     apiKey: AI_API_KEYS[AI_PROVIDER],
     model: AI_MODEL,
     history,
-    base64: req.file ? req.file.buffer.toString('base64') : null,
-    mime: req.file ? req.file.mimetype : null,
+    images,
   });
   res.json(result);
 }));
