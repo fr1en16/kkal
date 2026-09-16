@@ -6,15 +6,31 @@ const MEALS = [
 ];
 
 let currentDate = todayStr();
-let currentMeal = 'breakfast';
+let currentView = 'day'; // 'day' | 'history'
+let dayTab = 'chat'; // 'chat' | 'meals'
+let historyTab = 'list'; // 'list' | 'calendar'
+let calendarMonth = new Date();
 let settings = null;
-let aiItems = [];
-let activeTab = 'diary';
-let weightPhotoFile = null;
-let pickedProduct = null;
-let chatHistory = [];
+let dayData = null;
+let historyData = [];
 let chatPhotoFiles = [];
 let chatSending = false;
+
+// Direct editing state
+let editingEntry = null;
+let recalcOriginal = null;
+let deleteConfirmTimer = null;
+
+// Product editing state
+let editingProduct = null;
+
+// Speech recognition
+let speechRecognition = null;
+let isRecordingVoice = false;
+
+// --------------------------------------------------------------------------
+// Date & Formatting Utilities
+// --------------------------------------------------------------------------
 
 function toDateStr(d) {
   const y = d.getFullYear();
@@ -37,6 +53,22 @@ function fmtDateLabel(dateStr) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 }
 
+function fmtShortDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
+function fmtWeekday(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const s = d.toLocaleDateString('ru-RU', { weekday: 'short' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function fmtMonthYear(d) {
+  const s = d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function round(n) {
   return Math.round((n || 0) * 10) / 10;
 }
@@ -44,6 +76,30 @@ function round(n) {
 function formatNum(n) {
   return (Number(n) || 0).toLocaleString('ru-RU');
 }
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return toDateStr(d);
+}
+
+function guessMealByTime() {
+  const h = new Date().getHours();
+  if (h < 11) return 'breakfast';
+  if (h < 16) return 'lunch';
+  if (h < 21) return 'dinner';
+  return 'snack';
+}
+
+// --------------------------------------------------------------------------
+// API & Storage
+// --------------------------------------------------------------------------
 
 async function api(path, opts) {
   const res = await fetch(path, {
@@ -72,6 +128,102 @@ function setStorage(key, val) {
   } catch {}
 }
 
+// --------------------------------------------------------------------------
+// View Management
+// --------------------------------------------------------------------------
+
+function setView(view) {
+  currentView = view;
+  const dayViewEl = document.getElementById('dayView');
+  const historyViewEl = document.getElementById('historyView');
+  const topbarDate = document.getElementById('topbarDate');
+  const historyTitle = document.getElementById('historyTitle');
+  const toggleBtn = document.getElementById('toggleHistoryBtn');
+
+  if (view === 'history') {
+    dayViewEl.hidden = true;
+    historyViewEl.hidden = false;
+    topbarDate.hidden = true;
+    historyTitle.hidden = false;
+    toggleBtn.textContent = '⚡';
+    toggleBtn.title = 'Вернуться к сегодняшнему дню';
+    loadHistory();
+  } else {
+    dayViewEl.hidden = false;
+    historyViewEl.hidden = true;
+    topbarDate.hidden = false;
+    historyTitle.hidden = true;
+    toggleBtn.textContent = '🗓';
+    toggleBtn.title = 'История по дням';
+    updateInputPlaceholder();
+    loadDay(currentDate);
+  }
+}
+
+function setDayTab(tab) {
+  dayTab = tab;
+  const tabBtnChat = document.getElementById('tabBtnChat');
+  const tabBtnMeals = document.getElementById('tabBtnMeals');
+  const paneChat = document.getElementById('paneChat');
+  const paneMeals = document.getElementById('paneMeals');
+
+  if (tab === 'meals') {
+    tabBtnChat.classList.remove('active');
+    tabBtnMeals.classList.add('active');
+    paneChat.classList.remove('active');
+    paneMeals.classList.add('active');
+  } else {
+    tabBtnChat.classList.add('active');
+    tabBtnMeals.classList.remove('active');
+    paneChat.classList.add('active');
+    paneMeals.classList.remove('active');
+  }
+}
+
+function setHistoryTab(tab) {
+  historyTab = tab;
+  const listBtn = document.getElementById('histListTabBtn');
+  const calBtn = document.getElementById('histCalTabBtn');
+  const listPane = document.getElementById('historyListPane');
+  const calPane = document.getElementById('historyCalPane');
+
+  if (tab === 'calendar') {
+    listBtn.classList.remove('active');
+    calBtn.classList.add('active');
+    listPane.classList.remove('active');
+    calPane.classList.add('active');
+    renderCalendar();
+  } else {
+    listBtn.classList.add('active');
+    calBtn.classList.remove('active');
+    listPane.classList.add('active');
+    calPane.classList.remove('active');
+    renderHistoryList();
+  }
+}
+
+function updateInputPlaceholder() {
+  const input = document.getElementById('chatText');
+  const banner = document.getElementById('backlogBanner');
+  if (currentDate === todayStr()) {
+    if (input) input.placeholder = 'Напишите, что съели, вес, шаги…';
+    if (banner) {
+      banner.hidden = true;
+      banner.textContent = '';
+    }
+  } else {
+    if (input) input.placeholder = `Добавить запись на ${fmtShortDate(currentDate)}…`;
+    if (banner) {
+      banner.hidden = false;
+      banner.textContent = `📅 Запись за ${fmtDateLabel(currentDate)}`;
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
+// Day Data Loading & Rendering
+// --------------------------------------------------------------------------
+
 function applySettings(data) {
   if (!data) return;
   settings = data;
@@ -79,20 +231,21 @@ function applySettings(data) {
   const pEl = document.getElementById('pGoal');
   const fEl = document.getElementById('fGoal');
   const cEl = document.getElementById('cGoal');
-  const stepsGoalEl = document.getElementById('diaryStepsGoal');
 
   if (kcalEl) kcalEl.textContent = settings.goal_calories || 2000;
-  if (pEl) pEl.textContent = settings.goal_protein || 0;
-  if (fEl) fEl.textContent = settings.goal_fat || 0;
-  if (cEl) cEl.textContent = settings.goal_carbs || 0;
-  if (stepsGoalEl) stepsGoalEl.textContent = formatNum(settings.goal_steps || 10000);
+  if (pEl) pEl.textContent = settings.goal_protein || 120;
+  if (fEl) fEl.textContent = settings.goal_fat || 65;
+  if (cEl) cEl.textContent = settings.goal_carbs || 250;
+
+  const targetLabel = document.getElementById('dynamicsTargetLabel');
+  if (targetLabel) targetLabel.textContent = `Цель: ${formatNum(settings.goal_calories || 2000)} ккал`;
 }
 
 async function loadSettings() {
   const cached = getStorage('settings');
   if (cached) applySettings(cached);
   try {
-    const fresh = await api('/api/settings');
+    const fresh = await api(`/api/settings?date=${currentDate}`);
     setStorage('settings', fresh);
     applySettings(fresh);
     return fresh;
@@ -102,79 +255,13 @@ async function loadSettings() {
   }
 }
 
-function applyDay(data) {
-  if (!data) return;
-  if (data.settings) applySettings(data.settings);
-  renderMeals(data.entries || []);
-  renderSummary(data.entries || []);
-  renderDaySteps(data.steps || null);
-}
-
-async function loadDay() {
-  document.getElementById('dateLabel').textContent = fmtDateLabel(currentDate);
-
-  // 1. Instant render from local cache (0ms)
-  const cacheKey = 'day_' + currentDate;
-  const cached = getStorage(cacheKey);
-  if (cached) {
-    applyDay(cached);
-  }
-
-  // 2. Fetch fresh batch data in one roundtrip
-  try {
-    const data = await api(`/api/day?date=${currentDate}`);
-    setStorage(cacheKey, data);
-    if (data.settings) setStorage('settings', data.settings);
-    applyDay(data);
-  } catch (err) {
-    console.error('Failed to load day data:', err);
-    if (!cached) {
-      try {
-        const [entries, dayStep] = await Promise.all([
-          api(`/api/entries?date=${currentDate}`),
-          api(`/api/steps?date=${currentDate}`),
-        ]);
-        applyDay({ entries, steps: dayStep, settings });
-      } catch (fallbackErr) {
-        console.error('Fallback error:', fallbackErr);
-      }
-    }
-  }
-}
-
-function renderDaySteps(dayStep) {
-  const steps = dayStep ? dayStep.steps : 0;
-  const goal = Number(settings && settings.goal_steps) || 10000;
-  const pct = Math.min(100, Math.round((steps / goal) * 100));
-  const countEl = document.getElementById('diaryStepsCount');
-  const goalEl = document.getElementById('diaryStepsGoal');
-  const barEl = document.getElementById('diaryStepsBar');
-  const distEl = document.getElementById('diaryStepsDist');
-  const kcalEl = document.getElementById('diaryStepsKcal');
-  const pctEl = document.getElementById('diaryStepsPct');
-  const editBtn = document.getElementById('diaryStepsEdit');
-
-  if (countEl) countEl.textContent = formatNum(steps);
-  if (goalEl) goalEl.textContent = formatNum(goal);
-  if (barEl) barEl.style.width = pct + '%';
-  const dist = dayStep && dayStep.distance_km != null ? dayStep.distance_km : Math.round(steps * 0.00075 * 10) / 10;
-  const kcal = dayStep && dayStep.calories != null ? dayStep.calories : Math.round(steps * 0.04);
-  if (distEl) distEl.textContent = Number(dist || 0).toFixed(1);
-  if (kcalEl) kcalEl.textContent = round(kcal);
-  if (pctEl) pctEl.textContent = pct + '%';
-  if (editBtn) {
-    editBtn.textContent = steps > 0 ? 'Изменить' : 'Записать';
-    editBtn.onclick = () => openStepsSheet(currentDate, steps || '');
-  }
-}
-
 function renderSummary(entries) {
   const totals = entries.reduce(
     (acc, e) => {
-      acc.kcal += e.calories;
-      acc.p += e.protein;
-      acc.f += e.fat;
-      acc.c += e.carbs;
+      acc.kcal += Number(e.calories) || 0;
+      acc.p += Number(e.protein) || 0;
+      acc.f += Number(e.fat) || 0;
+      acc.c += Number(e.carbs) || 0;
       return acc;
     },
     { kcal: 0, p: 0, f: 0, c: 0 }
@@ -183,9 +270,12 @@ function renderSummary(entries) {
   document.getElementById('pEaten').textContent = round(totals.p);
   document.getElementById('fEaten').textContent = round(totals.f);
   document.getElementById('cEaten').textContent = round(totals.c);
-  const goal = Number(settings.goal_calories) || 1;
-  const pct = Math.min(100, (totals.kcal / goal) * 100);
-  document.getElementById('kcalBar').style.width = pct + '%';
+
+  const goal = Number(settings && settings.goal_calories) || 2000;
+  const pct = Math.min(100, Math.round((totals.kcal / goal) * 100));
+  const bar = document.getElementById('kcalBar');
+  bar.style.width = pct + '%';
+  bar.style.background = totals.kcal > goal ? '#ef4444' : 'var(--accent)';
 
   const left = goal - totals.kcal;
   const leftEl = document.getElementById('kcalLeft');
@@ -195,12 +285,52 @@ function renderSummary(entries) {
     : `Превышено на ${round(-left)} ккал`;
 }
 
+function renderExtraMetrics(weightObj, stepsObj) {
+  const row = document.getElementById('extraMetricsRow');
+  const weightWrap = document.getElementById('extraWeightWrap');
+  const weightVal = document.getElementById('extraWeightVal');
+  const divider = document.getElementById('extraDivider');
+  const stepsWrap = document.getElementById('extraStepsWrap');
+  const stepsVal = document.getElementById('extraStepsVal');
+
+  if (row) row.hidden = false;
+  if (weightWrap) weightWrap.hidden = false;
+  if (stepsWrap) stepsWrap.hidden = false;
+  if (divider) divider.hidden = false;
+
+  const hasWeight = weightObj && weightObj.weight != null;
+  if (weightVal) {
+    if (hasWeight) {
+      weightVal.textContent = `${round(weightObj.weight)} кг`;
+      weightVal.classList.remove('extra-val-muted');
+    } else {
+      weightVal.textContent = 'не указан';
+      weightVal.classList.add('extra-val-muted');
+    }
+  }
+
+  const hasSteps = stepsObj && stepsObj.steps != null && stepsObj.steps > 0;
+  if (stepsVal) {
+    if (hasSteps) {
+      stepsVal.textContent = `${formatNum(stepsObj.steps)} шагов`;
+      stepsVal.classList.remove('extra-val-muted');
+    } else {
+      stepsVal.textContent = '0 шагов';
+      stepsVal.classList.add('extra-val-muted');
+    }
+  }
+}
+
 function renderMeals(entries) {
-  const container = document.getElementById('meals');
+  const container = document.getElementById('mealsList');
   container.innerHTML = '';
+
+  const badge = document.getElementById('mealsCountBadge');
+  if (badge) badge.textContent = entries.length;
+
   for (const meal of MEALS) {
     const mealEntries = entries.filter((e) => e.meal === meal.key);
-    const kcal = mealEntries.reduce((s, e) => s + e.calories, 0);
+    const kcal = mealEntries.reduce((s, e) => s + (Number(e.calories) || 0), 0);
 
     const section = document.createElement('div');
     section.className = 'meal-section';
@@ -208,524 +338,521 @@ function renderMeals(entries) {
     const title = document.createElement('div');
     title.className = 'meal-title';
     title.innerHTML = `<span>${meal.label} <span class="meal-kcal">${kcal ? round(kcal) + ' ккал' : ''}</span></span>`;
-    const addBtn = document.createElement('button');
-    addBtn.className = 'meal-add';
-    addBtn.textContent = '+';
-    addBtn.onclick = () => openAddSheet(meal.key, meal.label);
-    title.appendChild(addBtn);
     section.appendChild(title);
 
     if (mealEntries.length === 0) {
       const hint = document.createElement('div');
       hint.className = 'empty-hint';
-      hint.textContent = 'Ничего не добавлено';
+      hint.textContent = 'Ничего не записано';
       section.appendChild(hint);
     } else {
       for (const e of mealEntries) {
-        section.appendChild(renderEntry(e));
+        section.appendChild(renderEntryRow(e));
       }
     }
     container.appendChild(section);
   }
 }
 
-let editingEntry = null;
-let editEntryOriginalGrams = 0;
-let editEntryOriginalKcal = 0;
-let editEntryOriginalProtein = 0;
-let editEntryOriginalFat = 0;
-let editEntryOriginalCarbs = 0;
-
-function renderEntry(e) {
+function renderEntryRow(e) {
   const row = document.createElement('div');
   row.className = 'entry entry-clickable';
+  const estMarker = e.estimated ? '<span title="Оценка по фото" style="color:var(--muted);font-weight:bold;">≈ </span>' : '';
   const sub = [e.grams ? `${round(e.grams)} г` : null, `Б${round(e.protein)} Ж${round(e.fat)} У${round(e.carbs)}`]
     .filter(Boolean)
     .join(' · ');
+
   row.innerHTML = `
-    <div class="entry-name">${escapeHtml(e.name)}<div class="entry-sub">${sub}</div></div>
-    <div class="entry-kcal">${round(e.calories)}</div>
+    <div class="entry-name">
+      ${escapeHtml(e.name)}
+      <div class="entry-sub">${sub}</div>
+    </div>
+    <div class="entry-kcal">${estMarker}${round(e.calories)}</div>
     <div class="entry-actions">
-      <button class="entry-action-btn entry-edit" title="Редактировать">✎</button>
-      <button class="entry-action-btn entry-del" title="Удалить">✕</button>
+      <button class="entry-action-btn entry-edit" type="button" title="Изменить">✎</button>
+      <button class="entry-action-btn entry-del" type="button" title="Удалить">✕</button>
     </div>
   `;
+
   row.onclick = (evt) => {
     if (evt.target.closest('.entry-del')) return;
     openEditEntrySheet(e);
   };
+
   row.querySelector('.entry-edit').onclick = (evt) => {
     evt.stopPropagation();
     openEditEntrySheet(e);
   };
-  row.querySelector('.entry-del').onclick = async (evt) => {
+
+  const delBtn = row.querySelector('.entry-del');
+  let delTimer = null;
+  delBtn.onclick = async (evt) => {
     evt.stopPropagation();
-    await api(`/api/entries/${e.id}`, { method: 'DELETE' });
-    loadDay();
+    if (delBtn.dataset.confirming === 'true') {
+      clearTimeout(delTimer);
+      await api(`/api/entries/${e.id}`, { method: 'DELETE' });
+      loadDay(currentDate);
+    } else {
+      delBtn.dataset.confirming = 'true';
+      delBtn.textContent = 'Точно?';
+      delBtn.classList.add('danger');
+      delTimer = setTimeout(() => {
+        delBtn.dataset.confirming = 'false';
+        delBtn.textContent = '✕';
+        delBtn.classList.remove('danger');
+      }, 2500);
+    }
   };
+
   return row;
 }
 
-function openEditEntrySheet(entry) {
-  editingEntry = entry;
-  document.getElementById('editEntryMeal').value = entry.meal || currentMeal;
-  document.getElementById('editEntryDate').value = entry.date || currentDate;
-  document.getElementById('editEntryName').value = entry.name || '';
-  document.getElementById('editEntryGrams').value = entry.grams != null ? entry.grams : '';
-  document.getElementById('editEntryKcal').value = entry.calories != null ? round(entry.calories) : '';
-  document.getElementById('editEntryProtein').value = entry.protein != null ? round(entry.protein) : '';
-  document.getElementById('editEntryFat').value = entry.fat != null ? round(entry.fat) : '';
-  document.getElementById('editEntryCarbs').value = entry.carbs != null ? round(entry.carbs) : '';
-
-  editEntryOriginalGrams = Number(entry.grams) || 0;
-  editEntryOriginalKcal = Number(entry.calories) || 0;
-  editEntryOriginalProtein = Number(entry.protein) || 0;
-  editEntryOriginalFat = Number(entry.fat) || 0;
-  editEntryOriginalCarbs = Number(entry.carbs) || 0;
-
-  document.getElementById('editEntryOverlay').classList.add('open');
+function applyDayData(data) {
+  dayData = data;
+  if (data.settings) applySettings(data.settings);
+  renderSummary(data.entries || []);
+  renderExtraMetrics(data.weight || null, data.steps || null);
+  renderMeals(data.entries || []);
 }
 
-function handleEditEntryGramsChange() {
-  if (!editEntryOriginalGrams || editEntryOriginalGrams <= 0) return;
-  const newGrams = Number(document.getElementById('editEntryGrams').value) || 0;
-  if (newGrams <= 0) return;
-  const ratio = newGrams / editEntryOriginalGrams;
-  document.getElementById('editEntryKcal').value = round(editEntryOriginalKcal * ratio);
-  document.getElementById('editEntryProtein').value = round(editEntryOriginalProtein * ratio);
-  document.getElementById('editEntryFat').value = round(editEntryOriginalFat * ratio);
-  document.getElementById('editEntryCarbs').value = round(editEntryOriginalCarbs * ratio);
-}
+async function loadDay(date) {
+  currentDate = date || currentDate;
+  document.getElementById('dateLabel').textContent = fmtDateLabel(currentDate);
+  updateInputPlaceholder();
 
-async function saveEditEntry() {
-  if (!editingEntry) return;
-  const name = document.getElementById('editEntryName').value.trim();
-  if (!name) {
-    document.getElementById('editEntryName').focus();
-    return;
-  }
-  const meal = document.getElementById('editEntryMeal').value;
-  const date = document.getElementById('editEntryDate').value || currentDate;
-  const grams = document.getElementById('editEntryGrams').value;
-  const calories = document.getElementById('editEntryKcal').value;
-  const protein = document.getElementById('editEntryProtein').value;
-  const fat = document.getElementById('editEntryFat').value;
-  const carbs = document.getElementById('editEntryCarbs').value;
-
-  await api(`/api/entries/${editingEntry.id}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      date,
-      meal,
-      name,
-      grams: grams !== '' ? Number(grams) : null,
-      calories: Number(calories) || 0,
-      protein: Number(protein) || 0,
-      fat: Number(fat) || 0,
-      carbs: Number(carbs) || 0,
-    }),
-  });
-
-  document.getElementById('editEntryOverlay').classList.remove('open');
-  editingEntry = null;
-  loadDay();
-}
-
-async function deleteCurrentEditEntry() {
-  if (!editingEntry) return;
-  await api(`/api/entries/${editingEntry.id}`, { method: 'DELETE' });
-  document.getElementById('editEntryOverlay').classList.remove('open');
-  editingEntry = null;
-  loadDay();
-}
-
-function escapeHtml(s) {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
-}
-
-function openAddSheet(mealKey, mealLabel) {
-  currentMeal = mealKey;
-  document.getElementById('addMealLabel').textContent = mealLabel;
-  clearAddForm();
-  document.getElementById('addOverlay').classList.add('open');
-}
-
-function clearAddForm() {
-  for (const id of ['fName', 'fGrams', 'fKcal', 'fProtein', 'fFat', 'fCarbs']) {
-    document.getElementById(id).value = '';
-  }
-  aiItems = [];
-  document.getElementById('aiResults').hidden = true;
-  document.getElementById('aiResults').innerHTML = '';
-  document.getElementById('aiStatus').hidden = true;
-  clearProductPick();
-}
-
-function clearProductPick() {
-  pickedProduct = null;
-  document.getElementById('productPick').value = '';
-  document.getElementById('productPickResults').hidden = true;
-  document.getElementById('productPickResults').innerHTML = '';
-  document.getElementById('productPicked').hidden = true;
-  document.getElementById('productPicked').innerHTML = '';
-}
-
-async function searchProductsForPick(q) {
-  const resultsEl = document.getElementById('productPickResults');
-  if (!q) {
-    resultsEl.hidden = true;
-    resultsEl.innerHTML = '';
-    return;
-  }
-  const products = await api(`/api/products?q=${encodeURIComponent(q)}`);
-  resultsEl.innerHTML = '';
-  if (products.length === 0) {
-    resultsEl.hidden = true;
-    return;
-  }
-  resultsEl.hidden = false;
-  for (const p of products) {
-    const el = document.createElement('div');
-    el.className = 'ai-item';
-    el.innerHTML = `
-      <div class="ai-item-info">
-        <div class="ai-item-name">${escapeHtml(p.name)}</div>
-        <div class="ai-item-sub">${round(p.calories)} ккал · Б${round(p.protein)} Ж${round(p.fat)} У${round(p.carbs)} на 100г</div>
-      </div>
-      <button class="ai-item-add">Выбрать</button>
-    `;
-    el.querySelector('.ai-item-add').onclick = () => pickProduct(p);
-    resultsEl.appendChild(el);
-  }
-}
-
-function pickProduct(product) {
-  pickedProduct = product;
-  document.getElementById('productPick').value = '';
-  document.getElementById('productPickResults').hidden = true;
-  document.getElementById('productPickResults').innerHTML = '';
-
-  const block = document.getElementById('productPicked');
-  block.hidden = false;
-  block.innerHTML = `
-    <div class="product-picked-info">
-      <div class="product-picked-name">${escapeHtml(product.name)}</div>
-      <div>${round(product.calories)} ккал на 100г</div>
-    </div>
-    <input class="field" id="productGrams" type="number" inputmode="decimal" placeholder="Граммы" value="100" />
-    <button class="product-picked-clear" id="productPickedClear">✕</button>
-  `;
-  document.getElementById('productPickedClear').onclick = clearProductPick;
-  document.getElementById('productGrams').oninput = (e) => applyProductGrams(e.target.value);
-  applyProductGrams(100);
-}
-
-function applyProductGrams(grams) {
-  if (!pickedProduct) return;
-  const g = Number(grams) || 0;
-  const factor = g / 100;
-  document.getElementById('fName').value = pickedProduct.name;
-  document.getElementById('fGrams').value = g;
-  document.getElementById('fKcal').value = round(pickedProduct.calories * factor);
-  document.getElementById('fProtein').value = round(pickedProduct.protein * factor);
-  document.getElementById('fFat').value = round(pickedProduct.fat * factor);
-  document.getElementById('fCarbs').value = round(pickedProduct.carbs * factor);
-}
-
-async function saveManualEntry() {
-  const name = document.getElementById('fName').value.trim();
-  if (!name) {
-    document.getElementById('fName').focus();
-    return;
-  }
-  await api('/api/entries', {
-    method: 'POST',
-    body: JSON.stringify({
-      date: currentDate,
-      meal: currentMeal,
-      name,
-      grams: document.getElementById('fGrams').value || null,
-      calories: document.getElementById('fKcal').value || 0,
-      protein: document.getElementById('fProtein').value || 0,
-      fat: document.getElementById('fFat').value || 0,
-      carbs: document.getElementById('fCarbs').value || 0,
-    }),
-  });
-  document.getElementById('addOverlay').classList.remove('open');
-  loadDay();
-}
-
-async function handlePhoto(file) {
-  const statusEl = document.getElementById('aiStatus');
-  statusEl.hidden = false;
-  statusEl.textContent = 'Распознаю фото…';
-  const resultsEl = document.getElementById('aiResults');
-  resultsEl.hidden = true;
-  resultsEl.innerHTML = '';
+  const cacheKey = 'day_' + currentDate;
+  const cached = getStorage(cacheKey);
+  if (cached) applyDayData(cached);
 
   try {
-    const form = new FormData();
-    form.append('image', file);
-    const res = await fetch('/api/ai/analyze', { method: 'POST', body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Ошибка распознавания');
-    aiItems = data.items;
-    if (aiItems.length === 0) {
-      statusEl.textContent = 'Ничего не распознано';
-      return;
-    }
-    statusEl.hidden = true;
-    renderAiResults();
+    const fresh = await api(`/api/day?date=${currentDate}`);
+    setStorage(cacheKey, fresh);
+    applyDayData(fresh);
   } catch (err) {
-    statusEl.textContent = err.message.includes('API-ключ')
-      ? 'Не задан API-ключ ИИ — добавьте его в .env на сервере'
-      : 'Не удалось распознать: ' + err.message;
+    console.error('Failed to load day data:', err);
+  }
+
+  loadChatMessages(currentDate);
+}
+
+// --------------------------------------------------------------------------
+// Collapsible Dynamics Chart (14 days)
+// --------------------------------------------------------------------------
+
+function toggleDynamics() {
+  const drawer = document.getElementById('dynamicsDrawer');
+  const icon = document.getElementById('dynamicsExpandIcon');
+  const isHidden = drawer.hidden;
+  drawer.hidden = !isHidden;
+  icon.classList.toggle('open', isHidden);
+
+  if (isHidden) {
+    renderDynamicsChart();
   }
 }
 
-function renderAiResults() {
-  const resultsEl = document.getElementById('aiResults');
-  resultsEl.hidden = false;
-  resultsEl.innerHTML = '';
-  aiItems.forEach((item, i) => {
-    const el = document.createElement('div');
-    el.className = 'ai-item';
-    const sub = [item.grams ? `${round(item.grams)} г` : null, `${round(item.calories)} ккал`, `Б${round(item.protein)} Ж${round(item.fat)} У${round(item.carbs)}`]
-      .filter(Boolean)
-      .join(' · ');
-    el.innerHTML = `
-      <div class="ai-item-info">
-        <div class="ai-item-name">${escapeHtml(item.name)}</div>
-        <div class="ai-item-sub">${sub}</div>
-      </div>
-      <button class="ai-item-add">Добавить</button>
-    `;
-    el.querySelector('.ai-item-add').onclick = async () => {
-      await api('/api/entries', {
-        method: 'POST',
-        body: JSON.stringify({
-          date: currentDate,
-          meal: currentMeal,
-          name: item.name,
-          grams: item.grams,
-          calories: item.calories,
-          protein: item.protein,
-          fat: item.fat,
-          carbs: item.carbs,
-        }),
-      });
-      el.remove();
-      loadDay();
+async function renderDynamicsChart() {
+  const svg = document.getElementById('dynamicsChart');
+  svg.innerHTML = '';
+
+  let hist = historyData;
+  if (!hist || hist.length === 0) {
+    try {
+      hist = await api('/api/history');
+      historyData = hist;
+    } catch {
+      hist = [];
+    }
+  }
+
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(toDateStr(d));
+  }
+
+  const histMap = new Map();
+  for (const h of hist) histMap.set(h.date, h);
+
+  const goal = Number(settings && settings.goal_calories) || 2000;
+  const chartData = days.map((date) => {
+    const item = histMap.get(date);
+    return {
+      date,
+      calories: item ? item.calories : 0,
+      goal: item ? item.goal_calories : goal,
     };
-    resultsEl.appendChild(el);
+  });
+
+  const maxKcal = Math.max(goal * 1.25, ...chartData.map((d) => d.calories));
+  const W = 320, H = 110, PAD_TOP = 14, PAD_BTM = 18, PAD_X = 8;
+  const chartH = H - PAD_TOP - PAD_BTM;
+  const numBars = chartData.length;
+  const slotW = (W - PAD_X * 2) / numBars;
+  const barW = Math.max(6, slotW - 4);
+  const ns = 'http://www.w3.org/2000/svg';
+
+  // Goal line
+  const goalY = PAD_TOP + chartH * (1 - goal / maxKcal);
+  const goalLine = document.createElementNS(ns, 'line');
+  goalLine.setAttribute('class', 'goal-line');
+  goalLine.setAttribute('x1', PAD_X);
+  goalLine.setAttribute('x2', W - PAD_X);
+  goalLine.setAttribute('y1', goalY);
+  goalLine.setAttribute('y2', goalY);
+  svg.appendChild(goalLine);
+
+  chartData.forEach((d, i) => {
+    const x = PAD_X + i * slotW + (slotW - barW) / 2;
+    const barH = d.calories > 0 ? Math.max(3, (d.calories / maxKcal) * chartH) : 0;
+    const y = PAD_TOP + chartH - barH;
+
+    if (barH > 0) {
+      const rect = document.createElementNS(ns, 'rect');
+      const isExceeded = d.calories > d.goal;
+      rect.setAttribute('fill', isExceeded ? '#ef4444' : '#22c55e');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', barW);
+      rect.setAttribute('height', barH);
+      rect.setAttribute('rx', 2.5);
+
+      const title = document.createElementNS(ns, 'title');
+      title.textContent = `${d.date}: ${round(d.calories)} ккал (цель ${d.goal})`;
+      rect.appendChild(title);
+
+      rect.style.cursor = 'pointer';
+      rect.onclick = () => {
+        currentDate = d.date;
+        setView('day');
+      };
+      svg.appendChild(rect);
+    }
+
+    if (i % 2 === 1 || i === numBars - 1) {
+      const dt = new Date(d.date + 'T00:00:00');
+      const text = document.createElementNS(ns, 'text');
+      text.setAttribute('class', 'chart-label');
+      text.setAttribute('x', x + barW / 2);
+      text.setAttribute('y', H - 4);
+      text.textContent = dt.getDate();
+      svg.appendChild(text);
+    }
   });
 }
 
-async function loadRecent(q) {
-  const rows = await api(`/api/recent?q=${encodeURIComponent(q || '')}`);
-  const list = document.getElementById('recentList');
-  list.innerHTML = rows.map((r) => `<option value="${escapeHtml(r.name)}"></option>`).join('');
-}
+// --------------------------------------------------------------------------
+// Chat & AI Assistant
+// --------------------------------------------------------------------------
 
-const PROVIDER_LABELS = {
-  openai: 'OpenAI (GPT-4o)',
-  gemini: 'Google Gemini',
-  grok: 'xAI Grok',
-  anthropic: 'Anthropic Claude',
-};
-const PROVIDER_ENV_VAR = {
-  openai: 'OPENAI_API_KEY',
-  gemini: 'GEMINI_API_KEY',
-  grok: 'GROK_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-};
-
-function openSettingsSheet() {
-  document.getElementById('sGoalKcal').value = settings.goal_calories;
-  document.getElementById('sGoalProtein').value = settings.goal_protein;
-  document.getElementById('sGoalFat').value = settings.goal_fat;
-  document.getElementById('sGoalCarbs').value = settings.goal_carbs;
-  document.getElementById('sGoalSteps').value = settings.goal_steps || 10000;
-  const providerLabel = PROVIDER_LABELS[settings.ai_provider] || settings.ai_provider;
-  const envVar = PROVIDER_ENV_VAR[settings.ai_provider] || 'AI_API_KEY';
-  document.getElementById('aiProviderInfo').textContent = settings.ai_configured
-    ? `Провайдер: ${providerLabel} (ключ задан через ${envVar} в .env)`
-    : `Провайдер: ${providerLabel}. Ключ не найден — задайте ${envVar} в .env и перезапустите сервер. Сменить провайдера можно переменной AI_PROVIDER.`;
-  document.getElementById('settingsOverlay').classList.add('open');
-}
-
-async function saveSettings() {
-  await api('/api/settings', {
-    method: 'PUT',
-    body: JSON.stringify({
-      goal_calories: document.getElementById('sGoalKcal').value || 2000,
-      goal_protein: document.getElementById('sGoalProtein').value || 0,
-      goal_fat: document.getElementById('sGoalFat').value || 0,
-      goal_carbs: document.getElementById('sGoalCarbs').value || 0,
-      goal_steps: document.getElementById('sGoalSteps').value || 10000,
-    }),
-  });
-  document.getElementById('settingsOverlay').classList.remove('open');
-  await loadSettings();
-  loadDay();
-}
-
-function addDays(dateStr, n) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return toDateStr(d);
-}
-
-function switchTab(tab) {
-  activeTab = tab || 'diary';
-  if (tab === 'steps') loadSteps();
-  if (tab === 'weight') loadWeight();
-  if (tab === 'products') loadProducts();
-}
-
-function guessMealByTime() {
-  const h = new Date().getHours();
-  if (h < 11) return 'breakfast';
-  if (h < 16) return 'lunch';
-  if (h < 21) return 'dinner';
-  return 'snack';
-}
-
-function initChat() {
-  if (chatHistory.length > 0) return;
-  document.getElementById('chatMeal').value = guessMealByTime();
-  renderChat();
-}
-
-function renderChat() {
+async function loadChatMessages(date) {
   const container = document.getElementById('chatMessages');
   container.innerHTML = '';
-  if (chatHistory.length === 0) {
-    const hint = document.createElement('div');
-    hint.className = 'chat-status';
-    hint.textContent = 'Напишите или пришлите фото того, что съели — я разберу на продукты и добавлю в дневник.';
-    container.appendChild(hint);
-    return;
+  try {
+    const msgs = await api(`/api/chat-messages?date=${date}`);
+    if (msgs.length === 0) {
+      const hint = document.createElement('div');
+      hint.className = 'chat-status';
+      hint.textContent = 'Напишите или пришлите фото того, что съели — я разберу на продукты и добавлю в дневник.';
+      container.appendChild(hint);
+      return;
+    }
+    for (const msg of msgs) {
+      container.appendChild(renderSavedChatMessage(msg));
+    }
+    container.scrollTop = container.scrollHeight;
+  } catch (err) {
+    console.error('Failed to load chat messages:', err);
   }
-  for (const msg of chatHistory) {
-    container.appendChild(renderChatMessage(msg));
-  }
-  container.scrollTop = container.scrollHeight;
 }
 
-function renderChatMessage(msg) {
+function renderSavedChatMessage(msg) {
   const row = document.createElement('div');
   row.className = `chat-msg ${msg.role}`;
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
 
-  const urls = msg.photoUrls || (msg.photoUrl ? [msg.photoUrl] : []);
-  if (urls.length > 0) {
-    const photosWrap = document.createElement('div');
-    photosWrap.className = 'chat-bubble-photos';
-    for (const url of urls) {
-      const img = document.createElement('img');
-      img.className = 'chat-bubble-photo';
-      img.src = url;
-      img.onclick = () => openLightbox(url);
-      photosWrap.appendChild(img);
-    }
-    bubble.appendChild(photosWrap);
+  if (msg.role === 'user') {
+    bubble.textContent = msg.text || '';
+    row.appendChild(bubble);
+    return row;
   }
+
+  // Assistant message
+  const meta = typeof msg.meta === 'string' ? JSON.parse(msg.meta || '{}') : (msg.meta || {});
+  
   if (msg.text) {
     const textEl = document.createElement('div');
     textEl.textContent = msg.text;
     bubble.appendChild(textEl);
   }
-  if (msg.pending) {
-    const statusEl = document.createElement('div');
-    statusEl.className = 'chat-status';
-    statusEl.textContent = 'Разбираю…';
-    bubble.appendChild(statusEl);
+
+  // If receipt card was executed
+  if (meta.createdEntries && meta.createdEntries.length > 0) {
+    bubble.appendChild(renderReceiptCard(meta.createdEntries));
+  } else if (meta.items && meta.items.length > 0 && !meta.needs_confirmation) {
+    bubble.appendChild(renderReceiptCard(meta.items));
   }
-  if (msg.error) {
-    const errEl = document.createElement('div');
-    errEl.className = 'chat-status';
-    errEl.textContent = msg.error;
-    bubble.appendChild(errEl);
-  }
-  if (msg.items && msg.items.length > 0) {
-    const itemsEl = document.createElement('div');
-    itemsEl.className = 'chat-items';
-    msg.items.forEach((item, i) => itemsEl.appendChild(renderChatItem(msg, item, i)));
-    bubble.appendChild(itemsEl);
-    if (msg.items.filter((it) => !it.added).length > 1) {
-      const addAllBtn = document.createElement('button');
-      addAllBtn.className = 'chat-add-all';
-      addAllBtn.textContent = 'Добавить всё';
-      addAllBtn.onclick = async () => {
-        for (const item of msg.items) {
-          if (!item.added) await addChatItem(msg, item);
-        }
-        renderChat();
-      };
-      bubble.appendChild(addAllBtn);
-    }
+
+  // If confirmation card
+  if (meta.needs_confirmation) {
+    bubble.appendChild(renderConfirmationCard(meta));
   }
 
   row.appendChild(bubble);
   return row;
 }
 
-function renderChatItem(msg, item, i) {
-  const el = document.createElement('div');
-  el.className = 'ai-item';
-  const sub = [item.grams ? `${round(item.grams)} г` : null, `${round(item.calories)} ккал`, `Б${round(item.protein)} Ж${round(item.fat)} У${round(item.carbs)}`]
-    .filter(Boolean)
-    .join(' · ');
-  el.innerHTML = `
-    <div class="ai-item-info">
-      <div class="ai-item-name">${escapeHtml(item.name)}</div>
-      <div class="ai-item-sub">${sub}</div>
-    </div>
-    <button class="ai-item-add">${item.added ? 'Добавлено' : 'Добавить'}</button>
-  `;
-  const btn = el.querySelector('.ai-item-add');
-  if (item.added) {
-    btn.disabled = true;
-  } else {
-    btn.onclick = async () => {
-      await addChatItem(msg, item);
-      renderChat();
+function renderReceiptCard(items) {
+  const card = document.createElement('div');
+  card.className = 'receipt-card';
+
+  for (const item of items) {
+    const itemRow = document.createElement('div');
+    itemRow.className = 'receipt-item-row';
+    const est = item.estimated ? '≈ ' : '';
+    const sub = [item.grams ? `${round(item.grams)} г` : null, `Б${round(item.protein)} Ж${round(item.fat)} У${round(item.carbs)}`]
+      .filter(Boolean)
+      .join(' · ');
+
+    let badgeText = '';
+    if (item.source === 'chat_photo' || item.estimated) {
+      badgeText = '📷 AI фото ~';
+    } else if (item.source === 'chat_voice') {
+      badgeText = '🎤 AI голос';
+    } else if (item.source === 'chat_text') {
+      badgeText = '💬 AI текст';
+    }
+
+    itemRow.innerHTML = `
+      <div class="receipt-item-info">
+        ${badgeText ? `<div class="receipt-badge">${badgeText}</div>` : ''}
+        <div class="receipt-item-name">${escapeHtml(item.name)}</div>
+        <div class="receipt-item-sub">${sub}</div>
+      </div>
+      <div class="receipt-item-kcal">${est}${round(item.calories)} ккал</div>
+    `;
+    card.appendChild(itemRow);
+
+    // Actions if item has id in DB
+    if (item.id) {
+      const actRow = document.createElement('div');
+      actRow.className = 'receipt-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'card-action-btn';
+      editBtn.type = 'button';
+      editBtn.innerHTML = '✎ Изменить';
+      editBtn.onclick = () => openEditEntrySheet(item);
+      actRow.appendChild(editBtn);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'card-action-btn danger';
+      delBtn.type = 'button';
+      delBtn.innerHTML = '✕ Отменить';
+      let delTimer = null;
+      delBtn.onclick = async () => {
+        if (delBtn.dataset.confirming === 'true') {
+          clearTimeout(delTimer);
+          await api(`/api/entries/${item.id}`, { method: 'DELETE' });
+          loadDay(currentDate);
+          card.remove();
+        } else {
+          delBtn.dataset.confirming = 'true';
+          delBtn.textContent = 'Точно?';
+          delTimer = setTimeout(() => {
+            delBtn.dataset.confirming = 'false';
+            delBtn.textContent = '✕ Отменить';
+          }, 2500);
+        }
+      };
+      actRow.appendChild(delBtn);
+
+      card.appendChild(actRow);
+    }
+  }
+
+  return card;
+}
+
+function renderConfirmationCard(meta) {
+  const card = document.createElement('div');
+  card.className = 'confirm-card';
+
+  let title = 'Требуется подтверждение';
+  let desc = meta.reply_text || 'Подтвердите действие:';
+
+  if (meta.intent === 'set_goal' && meta.goal_change) {
+    title = '🎯 Изменение дневной цели';
+    const fieldMap = {
+      goal_calories: 'Норма калорий',
+      goal_protein: 'Норма белков',
+      goal_fat: 'Норма жиров',
+      goal_carbs: 'Норма углеводов',
+      goal_steps: 'Норма шагов',
     };
+    const name = fieldMap[meta.goal_change.field] || meta.goal_change.field;
+    desc = `Установить ${name}: ${meta.goal_change.value}?`;
+  } else if (meta.intent === 'log_weight') {
+    title = '⚖️ Запись веса';
+    desc = `Записать вес ${meta.weight} кг на ${fmtShortDate(meta.date || currentDate)}?`;
+  } else if (meta.intent === 'log_steps') {
+    title = '👟 Запись шагов';
+    desc = `Записать ${formatNum(meta.steps)} шагов на ${fmtShortDate(meta.date || currentDate)}?`;
+  } else if (meta.intent === 'log_meal' && meta.items && meta.items.length > 0) {
+    title = `🍽 Запись на ${fmtShortDate(meta.date || currentDate)}`;
+    const names = meta.items.map((it) => it.name).join(', ');
+    desc = `Добавить в дневник: ${names}?`;
   }
-  return el;
+
+  card.innerHTML = `
+    <div class="confirm-card-title">${title}</div>
+    <div class="confirm-card-desc">${desc}</div>
+    <div class="confirm-card-actions">
+      <button class="confirm-btn-yes" type="button">Подтвердить</button>
+      <button class="confirm-btn-clarify" type="button">Уточнить</button>
+    </div>
+  `;
+
+  card.querySelector('.confirm-btn-yes').onclick = async () => {
+    try {
+      card.querySelector('.confirm-btn-yes').disabled = true;
+      card.querySelector('.confirm-btn-yes').textContent = 'Применяю…';
+      const action = meta.intent;
+      const payload = meta.intent === 'set_goal'
+        ? meta.goal_change
+        : meta.intent === 'log_weight'
+        ? { weight: meta.weight }
+        : meta.intent === 'log_steps'
+        ? { steps: meta.steps }
+        : { items: meta.items, meal_type: meta.meal_type };
+
+      await api('/api/ai/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ action, date: meta.date || currentDate, payload }),
+      });
+
+      card.innerHTML = '<div class="chat-status" style="color:#22c55e;font-weight:600;">✓ Успешно подтверждено и записано!</div>';
+      loadDay(currentDate);
+    } catch (err) {
+      alert('Ошибка подтверждения: ' + err.message);
+    }
+  };
+
+  card.querySelector('.confirm-btn-clarify').onclick = () => {
+    const input = document.getElementById('chatText');
+    input.focus();
+    if (meta.intent === 'set_goal') {
+      input.value = 'Какую норму калорий или БЖУ установить? ';
+    } else {
+      input.value = 'Хочу уточнить: ';
+    }
+  };
+
+  return card;
 }
 
-async function addChatItem(msg, item) {
-  await api('/api/entries', {
-    method: 'POST',
-    body: JSON.stringify({
-      date: currentDate,
-      meal: document.getElementById('chatMeal').value,
-      name: item.name,
-      grams: item.grams,
-      calories: item.calories,
-      protein: item.protein,
-      fat: item.fat,
-      carbs: item.carbs,
-    }),
-  });
-  item.added = true;
-  loadDay();
+async function sendChatMessage() {
+  if (chatSending) return;
+  const textEl = document.getElementById('chatText');
+  const text = textEl.value.trim();
+  const photos = [...chatPhotoFiles];
+  if (!text && photos.length === 0) return;
+
+  const container = document.getElementById('chatMessages');
+
+  // Add user bubble
+  const userRow = document.createElement('div');
+  userRow.className = 'chat-msg user';
+  const userBubble = document.createElement('div');
+  userBubble.className = 'chat-bubble';
+
+  if (photos.length > 0) {
+    const photosWrap = document.createElement('div');
+    photosWrap.className = 'chat-bubble-photos';
+    for (const p of photos) {
+      const img = document.createElement('img');
+      img.className = 'chat-bubble-photo';
+      img.src = URL.createObjectURL(p);
+      photosWrap.appendChild(img);
+    }
+    userBubble.appendChild(photosWrap);
+  }
+  if (text) {
+    const t = document.createElement('div');
+    t.textContent = text;
+    userBubble.appendChild(t);
+  }
+  userRow.appendChild(userBubble);
+  container.appendChild(userRow);
+
+  // Add assistant pending bubble
+  const astRow = document.createElement('div');
+  astRow.className = 'chat-msg assistant';
+  const astBubble = document.createElement('div');
+  astBubble.className = 'chat-bubble';
+  astBubble.innerHTML = '<div class="chat-status">Разбираю…</div>';
+  astRow.appendChild(astBubble);
+  container.appendChild(astRow);
+  container.scrollTop = container.scrollHeight;
+
+  // Clear inputs
+  textEl.value = '';
+  clearChatPhotos();
+  chatSending = true;
+
+  const sendBtn = document.getElementById('chatSend');
+  sendBtn.disabled = true;
+
+  try {
+    const form = new FormData();
+    form.append('text', text);
+    form.append('date', currentDate);
+    form.append('meal', guessMealByTime());
+    form.append('is_voice', isRecordingVoice ? 'true' : 'false');
+    for (const p of photos) {
+      form.append('images', p);
+    }
+
+    const res = await fetch('/api/ai/chat', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Ошибка распознавания');
+
+    astBubble.innerHTML = '';
+
+    if (data.clarification_question) {
+      const q = document.createElement('div');
+      q.textContent = data.clarification_question;
+      astBubble.appendChild(q);
+    } else if (data.reply_text) {
+      const rep = document.createElement('div');
+      rep.textContent = data.reply_text;
+      astBubble.appendChild(rep);
+    }
+
+    if (data.createdEntries && data.createdEntries.length > 0) {
+      astBubble.appendChild(renderReceiptCard(data.createdEntries));
+    }
+
+    if (data.needs_confirmation) {
+      astBubble.appendChild(renderConfirmationCard(data));
+    }
+
+    // Refresh day data
+    loadDay(currentDate);
+  } catch (err) {
+    astBubble.innerHTML = `<div class="chat-status" style="color:var(--danger)">Не удалось обработать: ${escapeHtml(err.message)}</div>`;
+  } finally {
+    chatSending = false;
+    sendBtn.disabled = false;
+    container.scrollTop = container.scrollHeight;
+  }
 }
 
-function chatMsgSummary(m) {
-  if (m.role === 'user') return m.text || (m.photoUrl ? '[фото]' : '');
-  const parts = [];
-  if (m.items && m.items.length) {
-    parts.push(`items: ${m.items.map((it) => `${it.name} (${it.grams ?? '?'} г, ${it.calories} ккал)`).join(', ')}`);
-  }
-  if (m.text) parts.push(`question: ${m.text}`);
-  return parts.join('; ') || '(нет данных)';
-}
+// --------------------------------------------------------------------------
+// Photos in Chat & Drag and Drop
+// --------------------------------------------------------------------------
 
 function addChatPhotos(files) {
   if (!files || files.length === 0) return;
@@ -815,68 +942,478 @@ function setupChatDragAndDrop() {
   });
 }
 
-async function sendChatMessage() {
-  if (chatSending) return;
-  const textEl = document.getElementById('chatText');
-  const text = textEl.value.trim();
-  const photos = [...chatPhotoFiles];
-  if (!text && photos.length === 0) return;
+// --------------------------------------------------------------------------
+// Voice Input (Web Speech API)
+// --------------------------------------------------------------------------
 
-  const photoUrls = photos.map((f) => URL.createObjectURL(f));
-  const userMsg = {
-    role: 'user',
-    text,
-    photoUrls,
-    photoUrl: photoUrls[0] || null,
-  };
-  chatHistory.push(userMsg);
-  const assistantMsg = { role: 'assistant', pending: true };
-  chatHistory.push(assistantMsg);
-  textEl.value = '';
-  clearChatPhotos();
-  chatSending = true;
-  renderChat();
+function setupVoiceInput() {
+  const btn = document.getElementById('chatVoiceBtn');
+  if (!btn) return;
 
-  const sendBtn = document.getElementById('chatSend');
-  if (sendBtn) {
-    sendBtn.disabled = true;
-    sendBtn.innerHTML = '<span>Распознаю…</span>';
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    btn.onclick = () => {
+      alert('Голосовой ввод не поддерживается в этом браузере. Вы можете использовать обычный ввод текста.');
+    };
+    return;
   }
 
-  try {
-    const form = new FormData();
-    const apiHistory = chatHistory
-      .filter((m) => !m.pending)
-      .slice(0, -1)
-      .map((m) => ({ role: m.role, text: chatMsgSummary(m) }));
-    const userLabel = text || (photos.length > 1 ? `[${photos.length} фото]` : '[фото]');
-    apiHistory.push({ role: 'user', text: userLabel });
-    form.append('history', JSON.stringify(apiHistory));
-    for (const p of photos) {
-      form.append('images', p);
+  speechRecognition = new SpeechRecognition();
+  speechRecognition.lang = 'ru-RU';
+  speechRecognition.continuous = false;
+  speechRecognition.interimResults = true;
+
+  speechRecognition.onstart = () => {
+    isRecordingVoice = true;
+    btn.classList.add('recording');
+    btn.title = 'Идёт запись речи… нажмите для остановки';
+  };
+
+  speechRecognition.onresult = (event) => {
+    let transcript = '';
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      transcript += event.results[i][0].transcript;
     }
-    const res = await fetch('/api/ai/chat', { method: 'POST', body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Ошибка запроса');
-    assistantMsg.pending = false;
-    assistantMsg.items = data.items || [];
-    assistantMsg.text = data.question || (assistantMsg.items.length ? '' : 'Не удалось распознать продукты');
-  } catch (err) {
-    assistantMsg.pending = false;
-    assistantMsg.error = err.message.includes('API-ключ')
-      ? 'Не задан API-ключ ИИ — добавьте его в .env на сервере'
-      : 'Не удалось обработать: ' + err.message;
-  } finally {
-    chatSending = false;
-    if (sendBtn) {
-      sendBtn.disabled = false;
-      sendBtn.innerHTML = '<span>Распознать</span><span class="send-arrow">➤</span>';
+    const input = document.getElementById('chatText');
+    input.value = transcript;
+  };
+
+  speechRecognition.onerror = (e) => {
+    console.warn('Speech recognition error:', e.error);
+    isRecordingVoice = false;
+    btn.classList.remove('recording');
+    btn.title = 'Голосовой ввод';
+  };
+
+  speechRecognition.onend = () => {
+    isRecordingVoice = false;
+    btn.classList.remove('recording');
+    btn.title = 'Голосовой ввод';
+  };
+
+  btn.onclick = () => {
+    if (isRecordingVoice) {
+      speechRecognition.stop();
+    } else {
+      speechRecognition.start();
     }
-    renderChat();
+  };
+}
+
+// --------------------------------------------------------------------------
+// Direct Editing Bottom Sheet
+// --------------------------------------------------------------------------
+
+function openEditEntrySheet(entry) {
+  editingEntry = entry;
+  recalcOriginal = {
+    grams: Number(entry.grams) || 0,
+    calories: Number(entry.calories) || 0,
+    protein: Number(entry.protein) || 0,
+    fat: Number(entry.fat) || 0,
+    carbs: Number(entry.carbs) || 0,
+  };
+
+  const mealObj = MEALS.find((m) => m.key === entry.meal);
+  const mealName = mealObj ? mealObj.label : 'Приём пищи';
+  const timeStr = entry.created_at
+    ? new Date(entry.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    : '';
+  document.getElementById('editEntrySubtitle').textContent = timeStr ? `${mealName} · ${timeStr}` : mealName;
+
+  document.getElementById('editEntryMeal').value = entry.meal || 'breakfast';
+  document.getElementById('editEntryDate').value = entry.date || currentDate;
+  document.getElementById('editEntryName').value = entry.name || '';
+  document.getElementById('editEntryGrams').value = entry.grams != null ? entry.grams : '';
+  document.getElementById('editEntryKcal').value = entry.calories != null ? round(entry.calories) : '';
+  document.getElementById('editEntryProtein').value = entry.protein != null ? round(entry.protein) : '';
+  document.getElementById('editEntryFat').value = entry.fat != null ? round(entry.fat) : '';
+  document.getElementById('editEntryCarbs').value = entry.carbs != null ? round(entry.carbs) : '';
+
+  const autoRecalcEl = document.getElementById('editEntryAutoRecalc');
+  if (autoRecalcEl) autoRecalcEl.checked = true;
+
+  const delBtn = document.getElementById('deleteEditEntry');
+  delBtn.textContent = 'Удалить';
+  delBtn.className = 'danger-ghost-btn';
+  delBtn.dataset.confirming = 'false';
+  if (deleteConfirmTimer) clearTimeout(deleteConfirmTimer);
+
+  document.getElementById('editEntryOverlay').classList.add('open');
+}
+
+function handleEditGramsChange() {
+  const autoRecalcEl = document.getElementById('editEntryAutoRecalc');
+  if (!autoRecalcEl || !autoRecalcEl.checked) return;
+  if (!recalcOriginal || !recalcOriginal.grams || recalcOriginal.grams <= 0) return;
+
+  const newGrams = Number(document.getElementById('editEntryGrams').value) || 0;
+  if (newGrams <= 0) return;
+  const ratio = newGrams / recalcOriginal.grams;
+
+  document.getElementById('editEntryKcal').value = Math.round(recalcOriginal.calories * ratio);
+  document.getElementById('editEntryProtein').value = round(recalcOriginal.protein * ratio);
+  document.getElementById('editEntryFat').value = round(recalcOriginal.fat * ratio);
+  document.getElementById('editEntryCarbs').value = round(recalcOriginal.carbs * ratio);
+}
+
+function disableAutoRecalc() {
+  const autoRecalcEl = document.getElementById('editEntryAutoRecalc');
+  if (autoRecalcEl) autoRecalcEl.checked = false;
+}
+
+async function saveEditEntry() {
+  if (!editingEntry) return;
+  const name = document.getElementById('editEntryName').value.trim();
+  if (!name) {
+    document.getElementById('editEntryName').focus();
+    return;
+  }
+  const meal = document.getElementById('editEntryMeal').value;
+  const date = document.getElementById('editEntryDate').value || currentDate;
+  const grams = document.getElementById('editEntryGrams').value;
+  const calories = document.getElementById('editEntryKcal').value;
+  const protein = document.getElementById('editEntryProtein').value;
+  const fat = document.getElementById('editEntryFat').value;
+  const carbs = document.getElementById('editEntryCarbs').value;
+
+  await api(`/api/entries/${editingEntry.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      name,
+      meal,
+      date,
+      grams: grams !== '' ? Number(grams) : null,
+      calories: Number(calories) || 0,
+      protein: Number(protein) || 0,
+      fat: Number(fat) || 0,
+      carbs: Number(carbs) || 0,
+      source: 'manual_edit',
+    }),
+  });
+
+  document.getElementById('editEntryOverlay').classList.remove('open');
+  editingEntry = null;
+  loadDay(currentDate);
+}
+
+async function handleDeleteEditEntry() {
+  if (!editingEntry) return;
+  const delBtn = document.getElementById('deleteEditEntry');
+
+  if (delBtn.dataset.confirming === 'true') {
+    if (deleteConfirmTimer) clearTimeout(deleteConfirmTimer);
+    await api(`/api/entries/${editingEntry.id}`, { method: 'DELETE' });
+    document.getElementById('editEntryOverlay').classList.remove('open');
+    editingEntry = null;
+    loadDay(currentDate);
+  } else {
+    delBtn.dataset.confirming = 'true';
+    delBtn.textContent = 'Точно удалить?';
+    delBtn.className = 'danger-btn';
+
+    deleteConfirmTimer = setTimeout(() => {
+      delBtn.dataset.confirming = 'false';
+      delBtn.textContent = 'Удалить';
+      delBtn.className = 'danger-ghost-btn';
+    }, 3000);
   }
 }
 
-let editingProduct = null;
+// --------------------------------------------------------------------------
+// Direct Editing for Weight and Steps
+// --------------------------------------------------------------------------
+
+let weightDeleteConfirmTimer = null;
+function openEditWeightSheet() {
+  const title = document.getElementById('editWeightTitle');
+  const input = document.getElementById('editWeightInput');
+  const delBtn = document.getElementById('deleteWeightBtn');
+  if (title) title.textContent = `Вес за ${fmtDateLabel(currentDate)}`;
+
+  const currentWeight = dayData && dayData.weight && dayData.weight.weight != null
+    ? dayData.weight.weight
+    : '';
+  if (input) input.value = currentWeight;
+
+  if (delBtn) {
+    delBtn.hidden = !currentWeight;
+    delBtn.textContent = 'Удалить';
+    delBtn.className = 'danger-ghost-btn';
+    delBtn.dataset.confirming = 'false';
+  }
+  if (weightDeleteConfirmTimer) clearTimeout(weightDeleteConfirmTimer);
+
+  document.getElementById('editWeightOverlay').classList.add('open');
+  if (input) input.focus();
+}
+
+async function saveWeightSheet() {
+  const input = document.getElementById('editWeightInput');
+  const val = Number(input.value);
+  if (isNaN(val) || val <= 0) return;
+
+  if (dayData && dayData.weight && dayData.weight.id) {
+    await api(`/api/weight/${dayData.weight.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: currentDate, weight: val }),
+    });
+  } else {
+    await api('/api/weight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: currentDate, weight: val }),
+    });
+  }
+
+  document.getElementById('editWeightOverlay').classList.remove('open');
+  loadDay(currentDate);
+}
+
+async function deleteWeightSheet() {
+  const delBtn = document.getElementById('deleteWeightBtn');
+  if (!dayData || !dayData.weight || !dayData.weight.id) return;
+
+  if (delBtn.dataset.confirming === 'true') {
+    if (weightDeleteConfirmTimer) clearTimeout(weightDeleteConfirmTimer);
+    await api(`/api/weight/${dayData.weight.id}`, { method: 'DELETE' });
+    document.getElementById('editWeightOverlay').classList.remove('open');
+    loadDay(currentDate);
+  } else {
+    delBtn.dataset.confirming = 'true';
+    delBtn.textContent = 'Точно удалить?';
+    delBtn.className = 'danger-btn';
+    weightDeleteConfirmTimer = setTimeout(() => {
+      delBtn.dataset.confirming = 'false';
+      delBtn.textContent = 'Удалить';
+      delBtn.className = 'danger-ghost-btn';
+    }, 3000);
+  }
+}
+
+let stepsResetConfirmTimer = null;
+function openEditStepsSheet() {
+  const title = document.getElementById('editStepsTitle');
+  const input = document.getElementById('editStepsInput');
+  const resetBtn = document.getElementById('resetStepsBtn');
+  if (title) title.textContent = `Шаги за ${fmtDateLabel(currentDate)}`;
+
+  const currentSteps = dayData && dayData.steps && dayData.steps.steps != null
+    ? dayData.steps.steps
+    : '';
+  if (input) input.value = currentSteps;
+
+  if (resetBtn) {
+    resetBtn.hidden = !currentSteps;
+    resetBtn.textContent = 'Сбросить';
+    resetBtn.className = 'danger-ghost-btn';
+    resetBtn.dataset.confirming = 'false';
+  }
+  if (stepsResetConfirmTimer) clearTimeout(stepsResetConfirmTimer);
+
+  document.getElementById('editStepsOverlay').classList.add('open');
+  if (input) input.focus();
+}
+
+async function saveStepsSheet() {
+  const input = document.getElementById('editStepsInput');
+  const val = Math.max(0, Math.round(Number(input.value)) || 0);
+
+  await api('/api/steps', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date: currentDate, steps: val }),
+  });
+
+  document.getElementById('editStepsOverlay').classList.remove('open');
+  loadDay(currentDate);
+}
+
+async function resetStepsSheet() {
+  const resetBtn = document.getElementById('resetStepsBtn');
+  if (!dayData || !dayData.steps || !dayData.steps.id) return;
+
+  if (resetBtn.dataset.confirming === 'true') {
+    if (stepsResetConfirmTimer) clearTimeout(stepsResetConfirmTimer);
+    await api(`/api/steps/${dayData.steps.id}`, { method: 'DELETE' });
+    document.getElementById('editStepsOverlay').classList.remove('open');
+    loadDay(currentDate);
+  } else {
+    resetBtn.dataset.confirming = 'true';
+    resetBtn.textContent = 'Точно сбросить?';
+    resetBtn.className = 'danger-btn';
+    stepsResetConfirmTimer = setTimeout(() => {
+      resetBtn.dataset.confirming = 'false';
+      resetBtn.textContent = 'Сбросить';
+      resetBtn.className = 'danger-ghost-btn';
+    }, 3000);
+  }
+}
+
+// --------------------------------------------------------------------------
+// History View (List by Months & Calendar)
+// --------------------------------------------------------------------------
+
+async function loadHistory() {
+  try {
+    historyData = await api('/api/history');
+    if (historyTab === 'calendar') {
+      renderCalendar();
+    } else {
+      renderHistoryList();
+    }
+  } catch (err) {
+    console.error('Failed to load history:', err);
+  }
+}
+
+function renderHistoryList() {
+  const container = document.getElementById('historyListContainer');
+  container.innerHTML = '';
+
+  if (historyData.length === 0) {
+    container.innerHTML = '<div class="empty-hint">История пока пуста</div>';
+    return;
+  }
+
+  // Group by month YYYY-MM
+  const groups = new Map();
+  for (const item of historyData) {
+    const monthKey = item.date.slice(0, 7);
+    if (!groups.has(monthKey)) groups.set(monthKey, []);
+    groups.get(monthKey).push(item);
+  }
+
+  for (const [monthKey, items] of groups.entries()) {
+    const groupEl = document.createElement('div');
+    groupEl.className = 'history-month-group';
+
+    const firstDate = new Date(monthKey + '-01T00:00:00');
+    const monthTitle = document.createElement('div');
+    monthTitle.className = 'history-month-title';
+    monthTitle.textContent = fmtMonthYear(firstDate);
+    groupEl.appendChild(monthTitle);
+
+    for (const d of items) {
+      const row = document.createElement('div');
+      row.className = `history-day-row ${d.status}`;
+
+      const weekday = fmtWeekday(d.date);
+      const dayNum = new Date(d.date + 'T00:00:00').getDate();
+      const dateLabel = `${weekday}, ${dayNum}`;
+
+      let metaParts = [];
+      if (d.weight != null) metaParts.push(`⚖️ ${round(d.weight)} кг`);
+      if (d.steps != null && d.steps > 0) metaParts.push(`👟 ${formatNum(d.steps)} шагов`);
+      const metaStr = metaParts.join(' · ');
+
+      const goal = d.goal_calories || 2000;
+      const pct = d.calories > 0 ? Math.min(100, Math.round((d.calories / goal) * 100)) : 0;
+      const barClass = d.status === 'exceeded' ? 'exceeded' : 'in-goal';
+
+      let deltaStr = '—';
+      if (d.status === 'in_goal') {
+        deltaStr = `${d.delta > 0 ? '+' : ''}${round(d.delta)} ккал`;
+      } else if (d.status === 'exceeded') {
+        deltaStr = `+${round(d.delta)} ккал`;
+      }
+
+      row.innerHTML = `
+        <div class="history-day-left">
+          <div class="history-day-date">${dateLabel}</div>
+          ${d.calories > 0 ? `<div class="history-day-bar-wrap"><div class="history-day-bar ${barClass}" style="width:${pct}%"></div></div>` : ''}
+          ${metaStr ? `<div class="history-day-meta">${metaStr}</div>` : ''}
+        </div>
+        <div class="history-day-right">
+          <div class="history-day-kcal">${d.calories > 0 ? round(d.calories) + ' ккал' : '—'}</div>
+          <div class="history-day-delta ${d.status}">${deltaStr}</div>
+        </div>
+      `;
+
+      row.onclick = () => {
+        currentDate = d.date;
+        setView('day');
+      };
+
+      groupEl.appendChild(row);
+    }
+
+    container.appendChild(groupEl);
+  }
+}
+
+function renderCalendar() {
+  const grid = document.getElementById('calendarGrid');
+  grid.innerHTML = '';
+
+  const y = calendarMonth.getFullYear();
+  const m = calendarMonth.getMonth();
+  document.getElementById('calMonthTitle').textContent = fmtMonthYear(calendarMonth);
+
+  const histMap = new Map();
+  for (const h of historyData) histMap.set(h.date, h);
+
+  const firstDay = new Date(y, m, 1);
+  const lastDay = new Date(y, m + 1, 0);
+
+  // Monday-based offset (0 = Mon, 6 = Sun)
+  let startDay = firstDay.getDay() - 1;
+  if (startDay < 0) startDay = 6;
+
+  // Empty pads
+  for (let i = 0; i < startDay; i++) {
+    const pad = document.createElement('div');
+    pad.className = 'calendar-day-cell empty-pad';
+    grid.appendChild(pad);
+  }
+
+  const curToday = todayStr();
+
+  for (let day = 1; day <= lastDay.getDate(); day++) {
+    const dStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const hist = histMap.get(dStr);
+    const cell = document.createElement('div');
+    cell.className = 'calendar-day-cell';
+    if (dStr === curToday) cell.classList.add('today');
+
+    const numSpan = document.createElement('span');
+    numSpan.textContent = day;
+    cell.appendChild(numSpan);
+
+    const status = hist ? hist.status : 'empty';
+    const dot = document.createElement('span');
+    dot.className = `calendar-status-dot ${status}`;
+    cell.appendChild(dot);
+
+    cell.onclick = () => {
+      currentDate = dStr;
+      setView('day');
+    };
+
+    grid.appendChild(cell);
+  }
+}
+
+// --------------------------------------------------------------------------
+// Settings & Products Modals
+// --------------------------------------------------------------------------
+
+function openSettingsSheet() {
+  if (settings) {
+    document.getElementById('sViewKcal').textContent = formatNum(settings.goal_calories || 2000);
+    document.getElementById('sViewProtein').textContent = settings.goal_protein || 120;
+    document.getElementById('sViewFat').textContent = settings.goal_fat || 65;
+    document.getElementById('sViewCarbs').textContent = settings.goal_carbs || 250;
+    document.getElementById('sViewSteps').textContent = formatNum(settings.goal_steps || 10000);
+
+    const providerLabel = settings.ai_provider;
+    document.getElementById('aiProviderInfo').textContent = settings.ai_configured
+      ? `Провайдер: ${providerLabel} (API-ключ активен)`
+      : `Провайдер: ${providerLabel} (ключ не найден в .env)`;
+  }
+  document.getElementById('settingsOverlay').classList.add('open');
+}
 
 async function loadProducts(q) {
   const products = await api(`/api/products?q=${encodeURIComponent(q || '')}`);
@@ -899,6 +1436,7 @@ async function loadProducts(q) {
         <button class="entry-action-btn entry-del" title="Удалить">✕</button>
       </div>
     `;
+
     row.onclick = (evt) => {
       if (evt.target.closest('.entry-del')) return;
       openEditProductSheet(p);
@@ -907,44 +1445,46 @@ async function loadProducts(q) {
       evt.stopPropagation();
       openEditProductSheet(p);
     };
-    row.querySelector('.entry-del').onclick = async (evt) => {
+
+    const delBtn = row.querySelector('.entry-del');
+    let delTimer = null;
+    delBtn.onclick = async (evt) => {
       evt.stopPropagation();
-      await api(`/api/products/${p.id}`, { method: 'DELETE' });
-      loadProducts(document.getElementById('productsSearch').value);
+      if (delBtn.dataset.confirming === 'true') {
+        clearTimeout(delTimer);
+        await api(`/api/products/${p.id}`, { method: 'DELETE' });
+        loadProducts(document.getElementById('productsSearch').value);
+      } else {
+        delBtn.dataset.confirming = 'true';
+        delBtn.textContent = 'Точно?';
+        delTimer = setTimeout(() => {
+          delBtn.dataset.confirming = 'false';
+          delBtn.textContent = '✕';
+        }, 2500);
+      }
     };
+
     container.appendChild(row);
   }
 }
 
-function openProductSheet() {
-  editingProduct = null;
-  document.getElementById('productSheetTitle').textContent = 'Новый продукт';
-  document.getElementById('saveProduct').textContent = 'Сохранить продукт';
-  document.getElementById('deleteProductBtn').hidden = true;
-  document.getElementById('pName').value = '';
-  document.getElementById('pKcal').value = '';
-  document.getElementById('pProtein').value = '';
-  document.getElementById('pFat').value = '';
-  document.getElementById('pCarbs').value = '';
-  document.getElementById('productAiStatus').hidden = true;
-  document.getElementById('productOverlay').classList.add('open');
+function openProductsSheet() {
+  loadProducts();
+  document.getElementById('productsOverlay').classList.add('open');
 }
 
 function openEditProductSheet(p) {
   editingProduct = p;
-  document.getElementById('productSheetTitle').textContent = 'Редактировать продукт';
-  document.getElementById('saveProduct').textContent = 'Сохранить изменения';
-  document.getElementById('deleteProductBtn').hidden = false;
   document.getElementById('pName').value = p.name || '';
   document.getElementById('pKcal').value = p.calories != null ? round(p.calories) : '';
   document.getElementById('pProtein').value = p.protein != null ? round(p.protein) : '';
   document.getElementById('pFat').value = p.fat != null ? round(p.fat) : '';
   document.getElementById('pCarbs').value = p.carbs != null ? round(p.carbs) : '';
-  document.getElementById('productAiStatus').hidden = true;
-  document.getElementById('productOverlay').classList.add('open');
+  document.getElementById('editProductOverlay').classList.add('open');
 }
 
 async function saveProductEntry() {
+  if (!editingProduct) return;
   const name = document.getElementById('pName').value.trim();
   if (!name) {
     document.getElementById('pName').focus();
@@ -958,18 +1498,12 @@ async function saveProductEntry() {
     carbs: Number(document.getElementById('pCarbs').value) || 0,
   };
 
-  if (editingProduct) {
-    await api(`/api/products/${editingProduct.id}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    });
-  } else {
-    await api('/api/products', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  }
-  document.getElementById('productOverlay').classList.remove('open');
+  await api(`/api/products/${editingProduct.id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+
+  document.getElementById('editProductOverlay').classList.remove('open');
   editingProduct = null;
   loadProducts(document.getElementById('productsSearch').value);
 }
@@ -977,450 +1511,9 @@ async function saveProductEntry() {
 async function deleteProductEntry() {
   if (!editingProduct) return;
   await api(`/api/products/${editingProduct.id}`, { method: 'DELETE' });
-  document.getElementById('productOverlay').classList.remove('open');
+  document.getElementById('editProductOverlay').classList.remove('open');
   editingProduct = null;
   loadProducts(document.getElementById('productsSearch').value);
-}
-
-async function handleProductPhoto(file) {
-  const statusEl = document.getElementById('productAiStatus');
-  statusEl.hidden = false;
-  statusEl.textContent = 'Распознаю упаковку…';
-  try {
-    const form = new FormData();
-    form.append('image', file);
-    const res = await fetch('/api/products/analyze', { method: 'POST', body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Ошибка распознавания');
-    document.getElementById('pName').value = data.name;
-    document.getElementById('pKcal').value = round(data.calories);
-    document.getElementById('pProtein').value = round(data.protein);
-    document.getElementById('pFat').value = round(data.fat);
-    document.getElementById('pCarbs').value = round(data.carbs);
-    statusEl.hidden = true;
-  } catch (err) {
-    statusEl.textContent = err.message.includes('API-ключ')
-      ? 'Не задан API-ключ ИИ — добавьте его в .env на сервере'
-      : 'Не удалось распознать: ' + err.message;
-  }
-}
-
-async function loadSteps() {
-  const cached = getStorage('steps_list');
-  if (cached) {
-    renderStepsSummary(cached);
-    renderStepsChart(cached);
-    renderStepsList(cached);
-  }
-  try {
-    const rows = await api('/api/steps');
-    setStorage('steps_list', rows);
-    renderStepsSummary(rows);
-    renderStepsChart(rows);
-    renderStepsList(rows);
-  } catch (err) {
-    console.error('Failed to load steps:', err);
-  }
-}
-
-function renderStepsSummary(rows) {
-  const goal = Number(settings && settings.goal_steps) || 10000;
-  const todayEntry = rows.find((r) => r.date === todayStr());
-  const currentSteps = todayEntry ? todayEntry.steps : (rows.length > 0 ? rows[rows.length - 1].steps : 0);
-  const currentDist = todayEntry ? todayEntry.distance_km : (rows.length > 0 ? rows[rows.length - 1].distance_km : 0);
-  const currentKcal = todayEntry ? todayEntry.calories : (rows.length > 0 ? rows[rows.length - 1].calories : 0);
-
-  document.getElementById('stepsCurrent').textContent = formatNum(currentSteps);
-  const statusEl = document.getElementById('stepsTargetStatus');
-  const pct = Math.round((currentSteps / goal) * 100);
-  if (pct >= 100) {
-    statusEl.className = 'steps-target-status achieved';
-    statusEl.textContent = `Цель ${formatNum(goal)} выполнена! (${pct}%)`;
-  } else {
-    statusEl.className = 'steps-target-status';
-    statusEl.textContent = `Цель: ${formatNum(goal)} (${pct}%)`;
-  }
-
-  const totalKm = rows.reduce((s, r) => s + (r.distance_km || 0), 0);
-  const totalKcal = rows.reduce((s, r) => s + (r.calories || 0), 0);
-  const avgSteps = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.steps, 0) / rows.length) : 0;
-
-  document.getElementById('stepsStatDist').textContent = (totalKm || currentDist || 0).toFixed(1);
-  document.getElementById('stepsStatKcal').textContent = formatNum(Math.round(totalKcal || currentKcal || 0));
-  document.getElementById('stepsStatAvg').textContent = formatNum(avgSteps || currentSteps);
-}
-
-function renderStepsChart(rows) {
-  const svg = document.getElementById('stepsChart');
-  svg.innerHTML = '';
-  const goal = Number(settings && settings.goal_steps) || 10000;
-
-  const days = [];
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(toDateStr(d));
-  }
-
-  const stepMap = new Map();
-  for (const r of rows) stepMap.set(r.date, r);
-
-  const data = days.map((date) => {
-    const entry = stepMap.get(date);
-    return {
-      date,
-      steps: entry ? entry.steps : 0,
-      id: entry ? entry.id : null,
-    };
-  });
-
-  const maxSteps = Math.max(goal * 1.15, ...data.map((d) => d.steps));
-  const W = 320, H = 120, PAD_TOP = 16, PAD_BTM = 18, PAD_X = 10;
-  const chartH = H - PAD_TOP - PAD_BTM;
-  const numBars = data.length;
-  const slotW = (W - PAD_X * 2) / numBars;
-  const barW = Math.max(6, slotW - 5);
-  const ns = 'http://www.w3.org/2000/svg';
-
-  // Goal line
-  const goalY = PAD_TOP + chartH * (1 - goal / maxSteps);
-  const goalLine = document.createElementNS(ns, 'line');
-  goalLine.setAttribute('class', 'goal-line');
-  goalLine.setAttribute('x1', PAD_X);
-  goalLine.setAttribute('x2', W - PAD_X);
-  goalLine.setAttribute('y1', goalY);
-  goalLine.setAttribute('y2', goalY);
-  svg.appendChild(goalLine);
-
-  // Goal text label
-  const goalText = document.createElementNS(ns, 'text');
-  goalText.setAttribute('class', 'chart-label');
-  goalText.setAttribute('x', W - PAD_X - 2);
-  goalText.setAttribute('y', Math.max(10, goalY - 3));
-  goalText.setAttribute('text-anchor', 'end');
-  goalText.textContent = `Цель ${goal >= 1000 ? Math.round(goal / 1000) + 'k' : goal}`;
-  svg.appendChild(goalText);
-
-  // Draw bars
-  data.forEach((d, i) => {
-    const x = PAD_X + i * slotW + (slotW - barW) / 2;
-    const barH = d.steps > 0 ? Math.max(3, (d.steps / maxSteps) * chartH) : 0;
-    const y = PAD_TOP + chartH - barH;
-
-    if (barH > 0) {
-      const rect = document.createElementNS(ns, 'rect');
-      rect.setAttribute('class', `bar ${d.steps >= goal ? 'goal-met' : 'below-goal'}`);
-      rect.setAttribute('x', x);
-      rect.setAttribute('y', y);
-      rect.setAttribute('width', barW);
-      rect.setAttribute('height', barH);
-      rect.setAttribute('rx', 2.5);
-      const title = document.createElementNS(ns, 'title');
-      title.textContent = `${d.date}: ${formatNum(d.steps)} шагов`;
-      rect.appendChild(title);
-      rect.onclick = () => {
-        const item = stepMap.get(d.date);
-        if (item) openEditStepsSheet(item);
-        else openStepsSheet(d.date, '');
-      };
-      svg.appendChild(rect);
-    }
-
-    if (i % 2 === 1 || i === numBars - 1) {
-      const dt = new Date(d.date + 'T00:00:00');
-      const text = document.createElementNS(ns, 'text');
-      text.setAttribute('class', 'chart-label');
-      text.setAttribute('x', x + barW / 2);
-      text.setAttribute('y', H - 4);
-      text.textContent = dt.getDate();
-      svg.appendChild(text);
-    }
-  });
-}
-
-let editingStep = null;
-
-function renderStepsList(rows) {
-  const container = document.getElementById('stepsList');
-  container.innerHTML = '';
-  const goal = Number(settings && settings.goal_steps) || 10000;
-  if (rows.length === 0) {
-    container.innerHTML = '<div class="empty-hint">Записей шагов пока нет</div>';
-    return;
-  }
-  const reversed = rows.slice().reverse();
-  for (const r of reversed) {
-    const row = document.createElement('div');
-    row.className = 'steps-entry steps-clickable';
-    const isAchieved = r.steps >= goal;
-    const dist = (r.distance_km || Math.round(r.steps * 0.00075 * 10) / 10).toFixed(1);
-    const kcal = round(r.calories || Math.round(r.steps * 0.04));
-
-    row.innerHTML = `
-      <div class="steps-entry-info">
-        <div class="steps-entry-date">${fmtDateLabel(r.date)} <span class="entry-sub">(${r.date})</span></div>
-        <div class="steps-entry-meta">${dist} км · ${kcal} ккал ${isAchieved ? '<span class="steps-entry-badge">✓ Цель выполнена</span>' : ''}</div>
-      </div>
-      <div class="steps-entry-value">${formatNum(r.steps)}</div>
-      <div class="entry-actions">
-        <button class="entry-action-btn entry-edit" title="Редактировать">✎</button>
-        <button class="entry-action-btn entry-del" title="Удалить">✕</button>
-      </div>
-    `;
-
-    row.onclick = (evt) => {
-      if (evt.target.closest('.entry-del')) return;
-      openEditStepsSheet(r);
-    };
-    row.querySelector('.entry-edit').onclick = (evt) => {
-      evt.stopPropagation();
-      openEditStepsSheet(r);
-    };
-    row.querySelector('.entry-del').onclick = async (e) => {
-      e.stopPropagation();
-      await api(`/api/steps/${r.id}`, { method: 'DELETE' });
-      loadSteps();
-      if (r.date === currentDate) loadDay();
-    };
-    container.appendChild(row);
-  }
-}
-
-function openStepsSheet(date, steps) {
-  editingStep = null;
-  document.getElementById('stepsSheetTitle').textContent = 'Запись шагов';
-  document.getElementById('saveSteps').textContent = 'Сохранить шаги';
-  document.getElementById('deleteStepsBtn').hidden = true;
-  document.getElementById('stDate').value = date || currentDate || todayStr();
-  document.getElementById('stSteps').value = steps != null ? steps : '';
-  document.getElementById('stDist').value = '';
-  document.getElementById('stKcal').value = '';
-  updateStepsPreview();
-  document.getElementById('stepsOverlay').classList.add('open');
-  setTimeout(() => {
-    const input = document.getElementById('stSteps');
-    if (input) input.focus();
-  }, 100);
-}
-
-function openEditStepsSheet(r) {
-  editingStep = r;
-  document.getElementById('stepsSheetTitle').textContent = 'Редактировать шаги';
-  document.getElementById('saveSteps').textContent = 'Сохранить изменения';
-  document.getElementById('deleteStepsBtn').hidden = false;
-  document.getElementById('stDate').value = r.date;
-  document.getElementById('stSteps').value = r.steps != null ? r.steps : '';
-  document.getElementById('stDist').value = r.distance_km != null ? r.distance_km : '';
-  document.getElementById('stKcal').value = r.calories != null ? round(r.calories) : '';
-  updateStepsPreview();
-  document.getElementById('stepsOverlay').classList.add('open');
-  setTimeout(() => {
-    const input = document.getElementById('stSteps');
-    if (input) input.focus();
-  }, 100);
-}
-
-function updateStepsPreview() {
-  const count = Math.max(0, Math.round(Number(document.getElementById('stSteps').value) || 0));
-  const autoDist = (count * 0.00075).toFixed(1);
-  const autoKcal = Math.round(count * 0.04);
-  const userDist = document.getElementById('stDist').value;
-  const userKcal = document.getElementById('stKcal').value;
-  const dist = userDist !== '' && !isNaN(Number(userDist)) ? Number(userDist).toFixed(1) : autoDist;
-  const kcal = userKcal !== '' && !isNaN(Number(userKcal)) ? Math.round(Number(userKcal)) : autoKcal;
-  const metaEl = document.getElementById('stPreviewMeta');
-  if (metaEl) metaEl.textContent = `~${dist} км · ~${kcal} ккал`;
-}
-
-async function saveStepsEntry() {
-  const date = document.getElementById('stDate').value;
-  const rawSteps = document.getElementById('stSteps').value;
-  if (!date || rawSteps === '') return;
-  const steps = Math.max(0, Math.round(Number(rawSteps)) || 0);
-  const distVal = document.getElementById('stDist').value;
-  const kcalVal = document.getElementById('stKcal').value;
-  const body = {
-    date,
-    steps,
-    distance_km: distVal !== '' ? Number(distVal) : null,
-    calories: kcalVal !== '' ? Number(kcalVal) : null,
-  };
-
-  if (editingStep) {
-    await api(`/api/steps/${editingStep.id}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    });
-  } else {
-    await api('/api/steps', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  }
-
-  document.getElementById('stepsOverlay').classList.remove('open');
-  const targetDate = date;
-  const prevDate = editingStep ? editingStep.date : null;
-  editingStep = null;
-  if (targetDate === currentDate || prevDate === currentDate) loadDay();
-  loadSteps();
-}
-
-async function deleteStepEntry() {
-  if (!editingStep) return;
-  const date = editingStep.date;
-  await api(`/api/steps/${editingStep.id}`, { method: 'DELETE' });
-  document.getElementById('stepsOverlay').classList.remove('open');
-  editingStep = null;
-  if (date === currentDate) loadDay();
-  loadSteps();
-}
-
-async function loadWeight() {
-  const cached = getStorage('weight_list');
-  if (cached) {
-    renderWeightSummary(cached);
-    renderWeightChart(cached);
-    renderWeightPhotos(cached);
-    renderWeightList(cached);
-  }
-  try {
-    const rows = await api('/api/weight');
-    setStorage('weight_list', rows);
-    renderWeightSummary(rows);
-    renderWeightChart(rows);
-    renderWeightPhotos(rows);
-    renderWeightList(rows);
-  } catch (err) {
-    console.error('Failed to load weight:', err);
-  }
-}
-
-function renderWeightSummary(rows) {
-  const currentEl = document.getElementById('weightCurrent');
-  const deltaEl = document.getElementById('weightDelta');
-  if (rows.length === 0) {
-    currentEl.textContent = '—';
-    deltaEl.textContent = 'Добавьте первый замер';
-    deltaEl.className = 'weight-delta';
-    return;
-  }
-  const last = rows[rows.length - 1];
-  currentEl.textContent = round(last.weight);
-  if (rows.length === 1) {
-    deltaEl.textContent = last.date;
-    deltaEl.className = 'weight-delta';
-    return;
-  }
-  const first = rows[0];
-  const diff = round(last.weight - first.weight);
-  deltaEl.className = 'weight-delta ' + (diff < 0 ? 'down' : diff > 0 ? 'up' : '');
-  const sign = diff > 0 ? '+' : '';
-  deltaEl.textContent = `${sign}${diff} кг с ${first.date}`;
-}
-
-function renderWeightChart(rows) {
-  const svg = document.getElementById('weightChart');
-  svg.innerHTML = '';
-  if (rows.length < 2) return;
-
-  const W = 320, H = 120, PAD = 10;
-  const weights = rows.map((r) => r.weight);
-  const min = Math.min(...weights);
-  const max = Math.max(...weights);
-  const range = max - min || 1;
-
-  const points = rows.map((r, i) => {
-    const x = PAD + (i / (rows.length - 1)) * (W - PAD * 2);
-    const y = H - PAD - ((r.weight - min) / range) * (H - PAD * 2);
-    return [x, y];
-  });
-
-  const ns = 'http://www.w3.org/2000/svg';
-  for (const frac of [0, 0.5, 1]) {
-    const y = PAD + frac * (H - PAD * 2);
-    const line = document.createElementNS(ns, 'line');
-    line.setAttribute('class', 'grid');
-    line.setAttribute('x1', PAD);
-    line.setAttribute('x2', W - PAD);
-    line.setAttribute('y1', y);
-    line.setAttribute('y2', y);
-    svg.appendChild(line);
-  }
-
-  const path = document.createElementNS(ns, 'path');
-  path.setAttribute('class', 'line');
-  path.setAttribute('d', points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]},${p[1]}`).join(' '));
-  svg.appendChild(path);
-
-  for (const [x, y] of points) {
-    const dot = document.createElementNS(ns, 'circle');
-    dot.setAttribute('class', 'dot');
-    dot.setAttribute('cx', x);
-    dot.setAttribute('cy', y);
-    dot.setAttribute('r', 2.5);
-    svg.appendChild(dot);
-  }
-}
-
-function renderWeightPhotos(rows) {
-  const container = document.getElementById('weightPhotos');
-  container.innerHTML = '';
-  const withPhotos = rows.filter((r) => r.photo).slice().reverse();
-  if (withPhotos.length === 0) return;
-  for (const r of withPhotos) {
-    const img = document.createElement('img');
-    img.className = 'weight-photo-thumb';
-    img.src = r.photo;
-    img.title = `${r.date} · ${round(r.weight)} кг`;
-    img.onclick = () => openLightbox(r.photo);
-    container.appendChild(img);
-  }
-}
-
-let editingWeight = null;
-let removeExistingWeightPhoto = false;
-
-function renderWeightList(rows) {
-  const container = document.getElementById('weightList');
-  container.innerHTML = '';
-  const reversed = rows.slice().reverse();
-  reversed.forEach((r, i) => {
-    const prev = reversed[i + 1];
-    const row = document.createElement('div');
-    row.className = 'weight-entry weight-clickable';
-    const diff = prev ? round(r.weight - prev.weight) : null;
-    const diffText = diff == null ? '' : diff === 0 ? '±0' : (diff > 0 ? '+' : '') + diff;
-    row.innerHTML = `
-      ${r.photo ? `<img class="weight-entry-photo" src="${r.photo}" />` : '<div class="weight-entry-photo-empty"></div>'}
-      <div class="weight-entry-date">${r.date}<div class="entry-sub">${diffText}</div></div>
-      <div class="weight-entry-value">${round(r.weight)} кг</div>
-      <div class="entry-actions">
-        <button class="entry-action-btn entry-edit" title="Редактировать">✎</button>
-        <button class="entry-action-btn entry-del" title="Удалить">✕</button>
-      </div>
-    `;
-    if (r.photo) {
-      row.querySelector('.weight-entry-photo').onclick = (evt) => {
-        evt.stopPropagation();
-        openLightbox(r.photo);
-      };
-    }
-    row.onclick = (evt) => {
-      if (evt.target.closest('.entry-del') || evt.target.closest('.weight-entry-photo')) return;
-      openEditWeightSheet(r);
-    };
-    row.querySelector('.entry-edit').onclick = (evt) => {
-      evt.stopPropagation();
-      openEditWeightSheet(r);
-    };
-    row.querySelector('.entry-del').onclick = async (evt) => {
-      evt.stopPropagation();
-      await api(`/api/weight/${r.id}`, { method: 'DELETE' });
-      loadWeight();
-    };
-    container.appendChild(row);
-  });
 }
 
 function openLightbox(src) {
@@ -1428,240 +1521,196 @@ function openLightbox(src) {
   document.getElementById('lightboxOverlay').classList.add('open');
 }
 
-function openWeightSheet() {
-  editingWeight = null;
-  removeExistingWeightPhoto = false;
-  document.getElementById('weightSheetTitle').textContent = 'Замер веса';
-  document.getElementById('saveWeight').textContent = 'Добавить';
-  document.getElementById('deleteWeightBtn').hidden = true;
-  document.getElementById('wDate').value = todayStr();
-  document.getElementById('wWeight').value = '';
-  weightPhotoFile = null;
-  const wrap = document.getElementById('wPhotoWrap');
-  wrap.hidden = true;
-  document.getElementById('wPhotoPreview').src = '';
-  document.getElementById('weightOverlay').classList.add('open');
-}
+// --------------------------------------------------------------------------
+// Initialization & Event Listeners
+// --------------------------------------------------------------------------
 
-function openEditWeightSheet(r) {
-  editingWeight = r;
-  removeExistingWeightPhoto = false;
-  document.getElementById('weightSheetTitle').textContent = 'Редактировать замер';
-  document.getElementById('saveWeight').textContent = 'Сохранить';
-  document.getElementById('deleteWeightBtn').hidden = false;
-  document.getElementById('wDate').value = r.date;
-  document.getElementById('wWeight').value = round(r.weight);
-  weightPhotoFile = null;
-  const wrap = document.getElementById('wPhotoWrap');
-  const preview = document.getElementById('wPhotoPreview');
-  if (r.photo) {
-    wrap.hidden = false;
-    preview.src = r.photo;
-  } else {
-    wrap.hidden = true;
-    preview.src = '';
-  }
-  document.getElementById('weightOverlay').classList.add('open');
-}
-
-async function saveWeightEntry() {
-  const date = document.getElementById('wDate').value;
-  const weight = document.getElementById('wWeight').value;
-  if (!date || !weight) return;
-  const form = new FormData();
-  form.append('date', date);
-  form.append('weight', weight);
-  if (weightPhotoFile) {
-    form.append('photo', weightPhotoFile);
-  } else if (removeExistingWeightPhoto) {
-    form.append('removePhoto', 'true');
-  }
-
-  if (editingWeight) {
-    await fetch(`/api/weight/${editingWeight.id}`, { method: 'PUT', body: form });
-  } else {
-    await fetch('/api/weight', { method: 'POST', body: form });
-  }
-  document.getElementById('weightOverlay').classList.remove('open');
-  editingWeight = null;
-  loadWeight();
-}
-
-async function deleteWeightEntry() {
-  if (!editingWeight) return;
-  await api(`/api/weight/${editingWeight.id}`, { method: 'DELETE' });
-  document.getElementById('weightOverlay').classList.remove('open');
-  editingWeight = null;
-  loadWeight();
-}
-
-document.getElementById('prevDay').onclick = () => {
-  currentDate = addDays(currentDate, -1);
-  loadDay();
-};
-document.getElementById('nextDay').onclick = () => {
-  currentDate = addDays(currentDate, 1);
-  loadDay();
-};
-document.getElementById('fabAdd').onclick = () => {
-  openAddSheet(currentMeal, MEALS.find((m) => m.key === currentMeal).label);
-};
-
-const todayBtn = document.getElementById('todayBtn');
-if (todayBtn) {
-  todayBtn.onclick = () => {
+document.addEventListener('DOMContentLoaded', () => {
+  // Brand title
+  document.getElementById('brandBtn').onclick = () => {
     currentDate = todayStr();
-    loadDay();
+    setView('day');
   };
-}
 
-function openProductsSheet() {
-  loadProducts();
-  document.getElementById('productsOverlay').classList.add('open');
-}
-
-const openProductsBtn = document.getElementById('openProductsBtn');
-if (openProductsBtn) {
-  openProductsBtn.onclick = () => openProductsSheet();
-}
-
-const closeProductsSheet = document.getElementById('closeProductsSheet');
-if (closeProductsSheet) {
-  closeProductsSheet.onclick = () => document.getElementById('productsOverlay').classList.remove('open');
-}
-
-const btnAddNewProduct = document.getElementById('btnAddNewProduct');
-if (btnAddNewProduct) {
-  btnAddNewProduct.onclick = () => openProductSheet();
-}
-
-const openWeightBtn = document.getElementById('openWeightBtn');
-if (openWeightBtn) {
-  openWeightBtn.onclick = () => openWeightSheet();
-}
-
-const addMealQuickBtn = document.getElementById('addMealQuickBtn');
-if (addMealQuickBtn) {
-  addMealQuickBtn.onclick = () => openAddSheet(currentMeal, MEALS.find((m) => m.key === currentMeal).label);
-}
-
-document.getElementById('closeSteps').onclick = () => document.getElementById('stepsOverlay').classList.remove('open');
-document.getElementById('stepsOverlay').onclick = (e) => {
-  if (e.target.id === 'stepsOverlay') e.currentTarget.classList.remove('open');
-};
-document.getElementById('saveSteps').onclick = saveStepsEntry;
-document.getElementById('stSteps').addEventListener('input', updateStepsPreview);
-document.querySelectorAll('.quick-step-btn').forEach((btn) => {
-  btn.onclick = () => {
-    const add = Number(btn.getAttribute('data-add')) || 0;
-    const cur = Number(document.getElementById('stSteps').value) || 0;
-    document.getElementById('stSteps').value = cur + add;
-    updateStepsPreview();
+  // Day navigation
+  document.getElementById('prevDay').onclick = () => {
+    loadDay(addDays(currentDate, -1));
   };
-});
+  document.getElementById('nextDay').onclick = () => {
+    loadDay(addDays(currentDate, 1));
+  };
+  document.getElementById('todayBtn').onclick = () => {
+    loadDay(todayStr());
+  };
 
-document.getElementById('chatSend').onclick = sendChatMessage;
-document.getElementById('chatText').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendChatMessage();
+  // History navigation
+  document.getElementById('toggleHistoryBtn').onclick = () => {
+    setView(currentView === 'history' ? 'day' : 'history');
+  };
+  document.getElementById('backToDayBtn').onclick = () => {
+    setView('day');
+  };
+  document.getElementById('histListTabBtn').onclick = () => setHistoryTab('list');
+  document.getElementById('histCalTabBtn').onclick = () => setHistoryTab('calendar');
+  document.getElementById('calPrevMonth').onclick = () => {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
+    renderCalendar();
+  };
+  document.getElementById('calNextMonth').onclick = () => {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+    renderCalendar();
+  };
+
+  // Day tabs
+  document.getElementById('tabBtnChat').onclick = () => setDayTab('chat');
+  document.getElementById('tabBtnMeals').onclick = () => setDayTab('meals');
+
+  // Summary card tap dynamics
+  document.getElementById('summaryCard').onclick = toggleDynamics;
+
+  // Suggestion chips
+  document.querySelectorAll('.chip-btn[data-fill]').forEach((btn) => {
+    btn.onclick = () => {
+      const input = document.getElementById('chatText');
+      input.value = btn.getAttribute('data-fill');
+      input.focus();
+    };
+  });
+  document.getElementById('chipPhotoDish').onclick = () => {
+    document.getElementById('chatPhotoInput').click();
+  };
+  const chipScale = document.getElementById('chipPhotoScale');
+  if (chipScale) {
+    chipScale.onclick = () => {
+      document.getElementById('chatPhotoInput').click();
+    };
   }
-});
-document.getElementById('chatPhotoBtn').onclick = () => document.getElementById('chatPhotoInput').click();
-document.getElementById('chatPhotoInput').onchange = (e) => {
-  if (e.target.files && e.target.files.length > 0) {
-    addChatPhotos(e.target.files);
+
+  // Date picker jump from date label
+  const dateLabelEl = document.getElementById('dateLabel');
+  const datePickerEl = document.getElementById('datePickerInput');
+  if (dateLabelEl && datePickerEl) {
+    dateLabelEl.onclick = () => {
+      if (typeof datePickerEl.showPicker === 'function') {
+        datePickerEl.showPicker();
+      } else {
+        datePickerEl.click();
+      }
+    };
+    datePickerEl.onchange = (e) => {
+      if (e.target.value) {
+        currentDate = e.target.value;
+        loadDay(currentDate);
+      }
+    };
   }
-  e.target.value = '';
-};
 
-document.getElementById('productsSearch').addEventListener('input', (e) => loadProducts(e.target.value));
-document.getElementById('closeProduct').onclick = () => document.getElementById('productOverlay').classList.remove('open');
-document.getElementById('productOverlay').onclick = (e) => {
-  if (e.target.id === 'productOverlay') e.currentTarget.classList.remove('open');
-};
-document.getElementById('saveProduct').onclick = saveProductEntry;
-document.getElementById('productPhotoBtn').onclick = () => document.getElementById('productPhotoInput').click();
-document.getElementById('productPhotoInput').onchange = (e) => {
-  const file = e.target.files[0];
-  if (file) handleProductPhoto(file);
-  e.target.value = '';
-};
+  // Extra metrics (weight & steps direct edit)
+  const extraWeightWrap = document.getElementById('extraWeightWrap');
+  if (extraWeightWrap) extraWeightWrap.onclick = openEditWeightSheet;
+  const extraStepsWrap = document.getElementById('extraStepsWrap');
+  if (extraStepsWrap) extraStepsWrap.onclick = openEditStepsSheet;
 
-document.getElementById('productPick').addEventListener('input', (e) => searchProductsForPick(e.target.value));
+  // Weight sheet
+  const closeEditWeight = document.getElementById('closeEditWeight');
+  if (closeEditWeight) closeEditWeight.onclick = () => document.getElementById('editWeightOverlay').classList.remove('open');
+  const editWeightOverlay = document.getElementById('editWeightOverlay');
+  if (editWeightOverlay) {
+    editWeightOverlay.onclick = (e) => {
+      if (e.target.id === 'editWeightOverlay') e.currentTarget.classList.remove('open');
+    };
+  }
+  const saveWeightBtn = document.getElementById('saveWeightBtn');
+  if (saveWeightBtn) saveWeightBtn.onclick = saveWeightSheet;
+  const deleteWeightBtn = document.getElementById('deleteWeightBtn');
+  if (deleteWeightBtn) deleteWeightBtn.onclick = deleteWeightSheet;
 
-document.getElementById('closeWeight').onclick = () => document.getElementById('weightOverlay').classList.remove('open');
-document.getElementById('weightOverlay').onclick = (e) => {
-  if (e.target.id === 'weightOverlay') e.currentTarget.classList.remove('open');
-};
-document.getElementById('saveWeight').onclick = saveWeightEntry;
-document.getElementById('wPhotoBtn').onclick = () => document.getElementById('wPhotoInput').click();
-document.getElementById('wPhotoInput').onchange = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  weightPhotoFile = file;
-  const preview = document.getElementById('wPhotoPreview');
-  preview.src = URL.createObjectURL(file);
-  preview.hidden = false;
-};
+  // Steps sheet
+  const closeEditSteps = document.getElementById('closeEditSteps');
+  if (closeEditSteps) closeEditSteps.onclick = () => document.getElementById('editStepsOverlay').classList.remove('open');
+  const editStepsOverlay = document.getElementById('editStepsOverlay');
+  if (editStepsOverlay) {
+    editStepsOverlay.onclick = (e) => {
+      if (e.target.id === 'editStepsOverlay') e.currentTarget.classList.remove('open');
+    };
+  }
+  const saveStepsBtn = document.getElementById('saveStepsBtn');
+  if (saveStepsBtn) saveStepsBtn.onclick = saveStepsSheet;
+  const resetStepsBtn = document.getElementById('resetStepsBtn');
+  if (resetStepsBtn) resetStepsBtn.onclick = resetStepsSheet;
 
-document.getElementById('lightboxOverlay').onclick = () => document.getElementById('lightboxOverlay').classList.remove('open');
-document.getElementById('closeAdd').onclick = () => document.getElementById('addOverlay').classList.remove('open');
-document.getElementById('addOverlay').onclick = (e) => {
-  if (e.target.id === 'addOverlay') e.currentTarget.classList.remove('open');
-};
-document.getElementById('saveEntry').onclick = saveManualEntry;
-document.getElementById('fName').addEventListener('input', (e) => loadRecent(e.target.value));
+  // Chat send & inputs
+  document.getElementById('chatSend').onclick = sendChatMessage;
+  document.getElementById('chatText').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
 
-document.getElementById('closeEditEntry').onclick = () => document.getElementById('editEntryOverlay').classList.remove('open');
-document.getElementById('editEntryOverlay').onclick = (e) => {
-  if (e.target.id === 'editEntryOverlay') e.currentTarget.classList.remove('open');
-};
-document.getElementById('saveEditEntry').onclick = saveEditEntry;
-document.getElementById('deleteEditEntry').onclick = deleteCurrentEditEntry;
-document.getElementById('editEntryGrams').addEventListener('input', handleEditEntryGramsChange);
-
-document.getElementById('deleteProductBtn').onclick = deleteProductEntry;
-document.getElementById('deleteStepsBtn').onclick = deleteStepEntry;
-document.getElementById('deleteWeightBtn').onclick = deleteWeightEntry;
-
-document.getElementById('stDist').addEventListener('input', updateStepsPreview);
-document.getElementById('stKcal').addEventListener('input', updateStepsPreview);
-
-const wPhotoRemoveBtn = document.getElementById('wPhotoRemove');
-if (wPhotoRemoveBtn) {
-  wPhotoRemoveBtn.onclick = () => {
-    weightPhotoFile = null;
-    removeExistingWeightPhoto = true;
-    document.getElementById('wPhotoWrap').hidden = true;
-    document.getElementById('wPhotoPreview').src = '';
+  document.getElementById('chatPhotoBtn').onclick = () => document.getElementById('chatPhotoInput').click();
+  document.getElementById('chatPhotoInput').onchange = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      addChatPhotos(e.target.files);
+    }
+    e.target.value = '';
   };
-}
 
-document.getElementById('photoBtn').onclick = () => document.getElementById('photoInput').click();
-document.getElementById('photoInput').onchange = (e) => {
-  const file = e.target.files[0];
-  if (file) handlePhoto(file);
-  e.target.value = '';
-};
+  // Direct editing modal
+  document.getElementById('closeEditEntry').onclick = () => document.getElementById('editEntryOverlay').classList.remove('open');
+  document.getElementById('editEntryOverlay').onclick = (e) => {
+    if (e.target.id === 'editEntryOverlay') e.currentTarget.classList.remove('open');
+  };
+  document.getElementById('saveEditEntry').onclick = saveEditEntry;
+  document.getElementById('deleteEditEntry').onclick = handleDeleteEditEntry;
+  document.getElementById('editEntryGrams').addEventListener('input', handleEditGramsChange);
+  
+  // Disable auto recalc when editing macros directly
+  ['editEntryKcal', 'editEntryProtein', 'editEntryFat', 'editEntryCarbs'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', disableAutoRecalc);
+  });
+  const autoRecalcCheck = document.getElementById('editEntryAutoRecalc');
+  if (autoRecalcCheck) {
+    autoRecalcCheck.addEventListener('change', () => {
+      if (autoRecalcCheck.checked) handleEditGramsChange();
+    });
+  }
 
-document.getElementById('openSettings').onclick = openSettingsSheet;
-document.getElementById('closeSettings').onclick = () => document.getElementById('settingsOverlay').classList.remove('open');
-document.getElementById('settingsOverlay').onclick = (e) => {
-  if (e.target.id === 'settingsOverlay') e.currentTarget.classList.remove('open');
-};
-document.getElementById('saveSettings').onclick = saveSettings;
+  // Settings
+  document.getElementById('openSettings').onclick = openSettingsSheet;
+  document.getElementById('closeSettings').onclick = () => document.getElementById('settingsOverlay').classList.remove('open');
+  document.getElementById('settingsOverlay').onclick = (e) => {
+    if (e.target.id === 'settingsOverlay') e.currentTarget.classList.remove('open');
+  };
+  document.getElementById('openProductsFromSettings').onclick = () => {
+    document.getElementById('settingsOverlay').classList.remove('open');
+    openProductsSheet();
+  };
 
-(function init() {
-  const cachedSettings = getStorage('settings');
-  if (cachedSettings) applySettings(cachedSettings);
+  // Products catalog
+  document.getElementById('closeProductsSheet').onclick = () => document.getElementById('productsOverlay').classList.remove('open');
+  document.getElementById('productsOverlay').onclick = (e) => {
+    if (e.target.id === 'productsOverlay') e.currentTarget.classList.remove('open');
+  };
+  document.getElementById('productsSearch').addEventListener('input', (e) => loadProducts(e.target.value));
 
-  const cachedDay = getStorage('day_' + currentDate);
-  if (cachedDay) applyDay(cachedDay);
+  // Edit product modal
+  document.getElementById('closeEditProduct').onclick = () => document.getElementById('editProductOverlay').classList.remove('open');
+  document.getElementById('editProductOverlay').onclick = (e) => {
+    if (e.target.id === 'editProductOverlay') e.currentTarget.classList.remove('open');
+  };
+  document.getElementById('saveProduct').onclick = saveProductEntry;
+  document.getElementById('deleteProductBtn').onclick = deleteProductEntry;
 
-  loadDay();
-  loadSteps();
-  loadWeight();
-  initChat();
+  // Lightbox
+  document.getElementById('lightboxOverlay').onclick = () => document.getElementById('lightboxOverlay').classList.remove('open');
+
+  // Voice & Drag and Drop
+  setupVoiceInput();
   setupChatDragAndDrop();
-})();
+
+  // Load initial settings and day
+  loadSettings();
+  loadDay(currentDate);
+});

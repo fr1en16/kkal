@@ -13,282 +13,247 @@
 <div class="app-layout">
 
   <header class="topbar">
-    <div class="topbar-brand">
+    <div class="topbar-brand" id="brandBtn" role="button" title="На главную">
       <span class="logo-icon">⚡</span>
       <span class="logo-title">kkal</span>
     </div>
 
-    <div class="topbar-date">
+    <!-- Date navigation for Day View -->
+    <div class="topbar-date" id="topbarDate">
       <button class="icon-btn" id="prevDay" title="Предыдущий день">‹</button>
-      <div class="date" id="dateLabel">Сегодня</div>
+      <div class="date" id="dateLabel" style="cursor: pointer;" title="Нажмите для выбора даты">Сегодня</div>
+      <input type="date" id="datePickerInput" style="position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;" />
       <button class="icon-btn" id="nextDay" title="Следующий день">›</button>
-      <button class="today-btn" id="todayBtn">Сегодня</button>
+      <button class="today-btn" id="todayBtn" title="Перейти на сегодня">Сегодня</button>
+    </div>
+
+    <!-- History navigation header (shown when on history view) -->
+    <div class="topbar-history-title" id="historyTitle" hidden>
+      <button class="icon-btn" id="backToDayBtn" title="Вернуться в день">‹</button>
+      <span>История</span>
     </div>
 
     <div class="topbar-actions">
-      <button class="topbar-btn" id="openProductsBtn" title="База продуктов">
-        <span>📖</span> <span class="btn-text">Продукты</span>
-      </button>
+      <button class="icon-btn history-nav-btn" id="toggleHistoryBtn" title="История по дням">🗓</button>
       <button class="icon-btn settings-btn" id="openSettings" title="Настройки">⚙</button>
     </div>
   </header>
 
-  <main class="dashboard-grid">
-
-    <!-- LEFT COLUMN: DIARY & MEALS -->
-    <section class="dashboard-col col-diary">
-      
-      <div class="summary-card">
-        <div class="summary-top">
-          <div class="summary-kcal-info">
-            <div class="summary-heading">Калории за день</div>
-            <div class="kcal-row">
-              <span id="kcalEaten">0</span><span class="muted">/</span><span id="kcalGoal" class="muted">2000</span>
-              <span class="unit">ккал</span>
-            </div>
-            <div class="kcal-left" id="kcalLeft">Осталось 0 ккал</div>
+  <!-- VIEW 1: DAY VIEW (TODAY OR DETAILED DAY) -->
+  <section class="view-container" id="dayView">
+    
+    <!-- SUMMARY CARD (TAP EXPANDS 14-DAY DYNAMICS) -->
+    <div class="summary-card" id="summaryCard" title="Нажмите, чтобы развернуть динамику за 14 дней">
+      <div class="summary-top">
+        <div class="summary-kcal-info">
+          <div class="summary-heading-row">
+            <span class="summary-heading">Калории за день</span>
+            <span class="expand-icon" id="dynamicsExpandIcon">▾</span>
           </div>
-
-          <div class="macros-grid">
-            <div class="macro-pill macro-protein">
-              <span class="macro-title">Белки</span>
-              <span class="macro-val"><b id="pEaten">0</b>/<span id="pGoal">0</span>г</span>
-            </div>
-            <div class="macro-pill macro-fat">
-              <span class="macro-title">Жиры</span>
-              <span class="macro-val"><b id="fEaten">0</b>/<span id="fGoal">0</span>г</span>
-            </div>
-            <div class="macro-pill macro-carbs">
-              <span class="macro-title">Углеводы</span>
-              <span class="macro-val"><b id="cEaten">0</b>/<span id="cGoal">0</span>г</span>
-            </div>
+          <div class="kcal-row">
+            <span id="kcalEaten">0</span><span class="muted">/</span><span id="kcalGoal" class="muted">2000</span>
+            <span class="unit">ккал</span>
           </div>
+          <div class="kcal-left" id="kcalLeft">Осталось 0 ккал</div>
         </div>
 
-        <div class="bar"><div class="bar-fill" id="kcalBar"></div></div>
+        <div class="macros-grid">
+          <div class="macro-pill macro-protein">
+            <span class="macro-title">Белки</span>
+            <span class="macro-val"><b id="pEaten">0</b>/<span id="pGoal">0</span>г</span>
+          </div>
+          <div class="macro-pill macro-fat">
+            <span class="macro-title">Жиры</span>
+            <span class="macro-val"><b id="fEaten">0</b>/<span id="fGoal">0</span>г</span>
+          </div>
+          <div class="macro-pill macro-carbs">
+            <span class="macro-title">Углеводы</span>
+            <span class="macro-val"><b id="cEaten">0</b>/<span id="cGoal">0</span>г</span>
+          </div>
+        </div>
       </div>
 
-      <div class="meals-header-row">
-        <h2 class="section-title">Приёмы пищи</h2>
-        <button class="primary-ghost-btn" id="addMealQuickBtn">+ Добавить блюдо</button>
+      <div class="bar"><div class="bar-fill" id="kcalBar"></div></div>
+
+      <!-- 14-day dynamics collapsible drawer -->
+      <div class="dynamics-drawer" id="dynamicsDrawer" hidden>
+        <div class="dynamics-header">
+          <span>Динамика калорий за 14 дней</span>
+          <span class="muted" id="dynamicsTargetLabel">Цель: 2 000 ккал</span>
+        </div>
+        <svg id="dynamicsChart" class="dynamics-chart" viewBox="0 0 320 110" preserveAspectRatio="none"></svg>
       </div>
+    </div>
 
-      <div id="meals"></div>
-    </section>
+    <!-- EXTRA ROW: WEIGHT AND STEPS -->
+    <div class="extra-metrics-row" id="extraMetricsRow">
+      <div class="extra-metric clickable" id="extraWeightWrap" role="button" tabindex="0" title="Нажмите для редактирования веса">
+        <span class="extra-emoji">⚖️</span>
+        <span class="extra-val" id="extraWeightVal">не указан</span>
+      </div>
+      <div class="extra-divider" id="extraDivider">·</div>
+      <div class="extra-metric clickable" id="extraStepsWrap" role="button" tabindex="0" title="Нажмите для редактирования шагов">
+        <span class="extra-emoji">👟</span>
+        <span class="extra-val" id="extraStepsVal">0 шагов</span>
+      </div>
+    </div>
 
-    <!-- RIGHT COLUMN: AI COPILOT & ACTIVITY WIDGETS -->
-    <aside class="dashboard-col col-widgets">
+    <!-- DAY TABS (CHAT VS MEALS) -->
+    <div class="day-tabs-bar">
+      <button class="day-tab-btn active" id="tabBtnChat" type="button">💬 Диалог</button>
+      <button class="day-tab-btn" id="tabBtnMeals" type="button">📋 Дневник приёмов <span class="badge" id="mealsCountBadge">0</span></button>
+    </div>
 
-      <!-- AI ASSISTANT -->
-      <div class="widget-card ai-card">
-        <div class="widget-header">
-          <div class="widget-title">
-            <span class="widget-badge">✨</span>
-            <span>Умный AI-помощник</span>
-          </div>
-          <select class="field-select chat-meal-select" id="chatMeal" title="Приём пищи для записи">
-            <option value="breakfast">В Завтрак</option>
-            <option value="lunch">В Обед</option>
-            <option value="dinner">В Ужин</option>
-            <option value="snack">В Перекус</option>
-          </select>
-        </div>
-
-        <div class="ai-input-box" id="aiDropZone">
-          <textarea class="ai-input-field" id="chatText" placeholder="Напишите или перетащите фото того, что съели…" rows="2"></textarea>
-          
-          <div id="chatPhotosList" class="chat-photos-list" hidden></div>
-
-          <div class="ai-input-bar">
-            <div class="ai-input-left">
-              <button class="action-btn" id="chatPhotoBtn" type="button">📷 Фото</button>
-              <input type="file" id="chatPhotoInput" accept="image/*" multiple hidden />
-              <span class="chat-drag-hint">или перетащите фото сюда</span>
-            </div>
-            <button class="chat-send-btn" id="chatSend" type="button">
-              <span>Распознать</span>
-              <span class="send-arrow">➤</span>
-            </button>
-          </div>
-
-          <div class="drag-overlay" id="dragOverlay" hidden>
-            <div class="drag-overlay-content">
-              <span class="drag-icon">📥</span>
-              <span>Отпустите фото для загрузки</span>
-            </div>
-          </div>
-        </div>
-
+    <!-- TAB PANE: CHAT STREAM -->
+    <div class="tab-pane active" id="paneChat">
+      <div class="chat-container" id="chatContainer">
         <div id="chatMessages" class="chat-messages"></div>
       </div>
+    </div>
 
-      <!-- STEPS WIDGET -->
-      <div class="widget-card steps-card" id="diaryStepsCard">
-        <div class="widget-header">
-          <div class="widget-title">
-            <span class="widget-emoji">👟</span>
-            <span>Шаги и активность</span>
-          </div>
-          <button class="action-btn" id="diaryStepsEdit">Записать</button>
-        </div>
+    <!-- TAB PANE: MEALS LIST (DIRECT VIEW WITH EDIT/DELETE) -->
+    <div class="tab-pane" id="paneMeals">
+      <div id="mealsList" class="meals-list"></div>
+    </div>
 
-        <div class="steps-metrics">
-          <div class="metric-item">
-            <div class="metric-lbl">Шаги</div>
-            <div class="metric-num"><b id="diaryStepsCount">0</b></div>
-            <div class="metric-sub">Цель: <span id="diaryStepsGoal">10 000</span> (<span id="diaryStepsPct">0%</span>)</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-lbl">Дистанция</div>
-            <div class="metric-num"><span id="diaryStepsDist">0.0</span> <span class="unit-sm">км</span></div>
-            <div class="metric-sub"><span id="stepsStatDist" hidden>0.0</span>активность</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-lbl">Сожжено</div>
-            <div class="metric-num"><span id="diaryStepsKcal">0</span> <span class="unit-sm">ккал</span></div>
-            <div class="metric-sub"><span id="stepsStatKcal" hidden>0</span>расход</div>
-          </div>
-        </div>
-
-        <div class="bar steps-bar"><div class="bar-fill steps-bar-fill" id="diaryStepsBar"></div></div>
-
-        <!-- Chart -->
-        <div class="chart-block">
-          <div class="chart-header">
-            <span>Динамика за 14 дней</span>
-            <span class="muted" id="stepsTargetStatus">Цель: 10 000</span>
-            <span id="stepsCurrent" hidden>0</span>
-            <span id="stepsStatAvg" hidden>0</span>
-          </div>
-          <svg id="stepsChart" class="steps-chart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
-        </div>
-
-        <details class="history-accordion">
-          <summary>История записей шагов</summary>
-          <div id="stepsList" class="steps-history-list"></div>
-        </details>
+    <!-- CHIPS AND BOTTOM INPUT BAR (STICKY) -->
+    <div class="sticky-bottom-bar" id="stickyBottomBar">
+      <div class="backlog-banner" id="backlogBanner" hidden></div>
+      <!-- Suggestion chips above input -->
+      <div class="suggestion-chips" id="suggestionChips">
+        <button class="chip-btn" type="button" data-fill="Завтрак: ">🍳 Завтрак</button>
+        <button class="chip-btn" type="button" data-fill="Обед: ">🍲 Обед</button>
+        <button class="chip-btn" type="button" data-fill="Ужин: ">🥗 Ужин</button>
+        <button class="chip-btn" type="button" data-fill="Перекус: ">🍎 Перекус</button>
+        <button class="chip-btn" type="button" data-fill="Вес: ">⚖️ Вес</button>
+        <button class="chip-btn" type="button" data-fill="Шаги: ">👟 Шаги</button>
+        <button class="chip-btn" type="button" id="chipPhotoScale">⚖️ Фото весов</button>
+        <button class="chip-btn" type="button" id="chipPhotoDish">📷 Фото тарелки</button>
       </div>
 
-      <!-- WEIGHT WIDGET -->
-      <div class="widget-card weight-card">
-        <div class="widget-header">
-          <div class="widget-title">
-            <span class="widget-emoji">⚖️</span>
-            <span>Контроль веса</span>
-          </div>
-          <button class="action-btn" id="openWeightBtn">+ Взвеситься</button>
+      <!-- Input box -->
+      <div class="chat-input-row" id="aiDropZone">
+        <div id="chatPhotosList" class="chat-photos-list" hidden></div>
+        
+        <div class="chat-input-controls">
+          <input type="file" id="chatPhotoInput" accept="image/*" multiple hidden />
+          <button class="chat-tool-btn" id="chatPhotoBtn" type="button" title="Прикрепить фото">📷</button>
+          <button class="chat-tool-btn voice-btn" id="chatVoiceBtn" type="button" title="Голосовой ввод">🎤</button>
+          
+          <textarea class="chat-input-field" id="chatText" placeholder="Написать, что съели…" rows="1"></textarea>
+
+          <button class="chat-send-btn" id="chatSend" type="button" title="Отправить">
+            <span class="send-arrow">➤</span>
+          </button>
         </div>
 
-        <div class="weight-status-row">
-          <div>
-            <div class="metric-lbl">Текущий вес</div>
-            <div class="weight-current"><span id="weightCurrent">—</span><span class="unit-sm">кг</span></div>
-          </div>
-          <div class="weight-delta-wrapper">
-            <div class="metric-lbl">Динамика</div>
-            <div class="weight-delta" id="weightDelta">—</div>
+        <div class="drag-overlay" id="dragOverlay" hidden>
+          <div class="drag-overlay-content">
+            <span class="drag-icon">📥</span>
+            <span>Отпустите фото для загрузки</span>
           </div>
         </div>
-
-        <div class="chart-block">
-          <svg id="weightChart" class="weight-chart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
-        </div>
-
-        <div id="weightPhotos" class="weight-photos"></div>
-
-        <details class="history-accordion">
-          <summary>История замеров</summary>
-          <div id="weightList" class="weight-history-list"></div>
-        </details>
-      </div>
-
-    </aside>
-
-  </main>
-
-</div>
-
-<button class="fab" id="fabAdd" title="Добавить еду">+</button>
-
-<!-- Products sheet / modal -->
-<div class="overlay" id="productsOverlay">
-  <div class="sheet sheet-wide">
-    <div class="sheet-header">
-      <span>База продуктов</span>
-      <div class="sheet-actions">
-        <button class="action-btn" id="btnAddNewProduct">+ Новый продукт</button>
-        <button class="text-btn" id="closeProductsSheet">✕</button>
       </div>
     </div>
-    <input class="field products-search" id="productsSearch" placeholder="Поиск продукта…" autocomplete="off" />
-    <div id="productsList"></div>
-  </div>
-</div>
 
-<!-- Add entry modal -->
-<div class="overlay" id="addOverlay">
-  <div class="sheet">
-    <div class="sheet-header">
-      <span id="addMealLabel">Приём пищи</span>
-      <button class="text-btn" id="closeAdd">✕</button>
+  </section>
+
+  <!-- VIEW 2: HISTORY VIEW (LIST & CALENDAR) -->
+  <section class="view-container" id="historyView" hidden>
+    <div class="history-view-tabs">
+      <button class="segmented-btn active" id="histListTabBtn" type="button">Список по месяцам</button>
+      <button class="segmented-btn" id="histCalTabBtn" type="button">Календарь</button>
     </div>
 
-    <button class="photo-btn" id="photoBtn">📷 Распознать по фото</button>
-    <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
-    <div id="aiStatus" class="ai-status" hidden></div>
-
-    <div id="aiResults" class="ai-results" hidden></div>
-
-    <div class="divider">из базы продуктов</div>
-    <input class="field" id="productPick" placeholder="Найти продукт…" autocomplete="off" />
-    <div id="productPickResults" class="ai-results" hidden></div>
-    <div id="productPicked" class="product-picked" hidden></div>
-
-    <div class="divider">или вручную</div>
-
-    <input class="field" id="fName" list="recentList" placeholder="Название" autocomplete="off" />
-    <datalist id="recentList"></datalist>
-    <div class="row">
-      <input class="field" id="fGrams" type="number" inputmode="decimal" placeholder="Граммы" />
-      <input class="field" id="fKcal" type="number" inputmode="decimal" placeholder="Ккал" />
+    <!-- HISTORY LIST -->
+    <div class="history-pane active" id="historyListPane">
+      <div id="historyListContainer" class="history-list-container"></div>
     </div>
-    <div class="row">
-      <input class="field" id="fProtein" type="number" inputmode="decimal" placeholder="Белки" />
-      <input class="field" id="fFat" type="number" inputmode="decimal" placeholder="Жиры" />
-      <input class="field" id="fCarbs" type="number" inputmode="decimal" placeholder="Углеводы" />
-    </div>
-    <button class="primary-btn" id="saveEntry">Добавить</button>
-  </div>
-</div>
 
-<!-- Edit entry modal -->
+    <!-- HISTORY CALENDAR -->
+    <div class="history-pane" id="historyCalPane">
+      <div class="calendar-card">
+        <div class="calendar-nav">
+          <button class="icon-btn" id="calPrevMonth" type="button">‹</button>
+          <div class="calendar-month-title" id="calMonthTitle">Сентябрь 2026</div>
+          <button class="icon-btn" id="calNextMonth" type="button">›</button>
+        </div>
+        <div class="calendar-weekdays">
+          <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+        <div class="calendar-legend">
+          <div class="legend-item"><span class="dot dot-in-goal"></span> В пределах цели</div>
+          <div class="legend-item"><span class="dot dot-exceeded"></span> Превышение</div>
+          <div class="legend-item"><span class="dot dot-empty"></span> Нет записей</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<!-- DIRECT EDIT BOTTOM SHEET (LABELED FIELDS, NO UNNAMED FIELDS) -->
 <div class="overlay" id="editEntryOverlay">
   <div class="sheet">
     <div class="sheet-header">
-      <span>Редактировать блюдо</span>
+      <div>
+        <div class="sheet-title">Изменить запись</div>
+        <div class="sheet-subtitle" id="editEntrySubtitle">Завтрак</div>
+      </div>
       <button class="text-btn" id="closeEditEntry">✕</button>
     </div>
 
     <div class="row">
-      <select class="field-select" id="editEntryMeal" style="flex: 1;" title="Приём пищи">
-        <option value="breakfast">Завтрак</option>
-        <option value="lunch">Обед</option>
-        <option value="dinner">Ужин</option>
-        <option value="snack">Перекус</option>
-      </select>
-      <input class="field" id="editEntryDate" type="date" style="flex: 1;" title="Дата" />
+      <div class="field-group flex-1">
+        <label class="field-label" for="editEntryMeal">Приём пищи</label>
+        <select class="field-select" id="editEntryMeal">
+          <option value="breakfast">Завтрак</option>
+          <option value="lunch">Обед</option>
+          <option value="dinner">Ужин</option>
+          <option value="snack">Перекус</option>
+        </select>
+      </div>
+      <div class="field-group flex-1">
+        <label class="field-label" for="editEntryDate">Дата</label>
+        <input class="field" id="editEntryDate" type="date" />
+      </div>
     </div>
 
-    <input class="field" id="editEntryName" placeholder="Название блюда" autocomplete="off" />
+    <div class="field-group">
+      <label class="field-label" for="editEntryName">Название</label>
+      <input class="field" id="editEntryName" placeholder="Название блюда" maxlength="80" autocomplete="off" />
+    </div>
 
     <div class="row">
-      <input class="field" id="editEntryGrams" type="number" inputmode="decimal" placeholder="Граммы" />
-      <input class="field" id="editEntryKcal" type="number" inputmode="decimal" placeholder="Ккал" />
+      <div class="field-group flex-1">
+        <label class="field-label" for="editEntryGrams">Граммы</label>
+        <input class="field" id="editEntryGrams" type="number" inputmode="decimal" placeholder="г" step="0.1" min="0.1" />
+      </div>
+      <div class="field-group flex-1">
+        <label class="field-label" for="editEntryKcal">Ккал</label>
+        <input class="field" id="editEntryKcal" type="number" inputmode="decimal" placeholder="ккал" min="0" />
+      </div>
     </div>
+
     <div class="row">
-      <input class="field" id="editEntryProtein" type="number" inputmode="decimal" placeholder="Белки" />
-      <input class="field" id="editEntryFat" type="number" inputmode="decimal" placeholder="Жиры" />
-      <input class="field" id="editEntryCarbs" type="number" inputmode="decimal" placeholder="Углеводы" />
+      <div class="field-group flex-1">
+        <label class="field-label" for="editEntryProtein">Белки (г)</label>
+        <input class="field" id="editEntryProtein" type="number" inputmode="decimal" placeholder="Б" step="0.1" min="0" />
+      </div>
+      <div class="field-group flex-1">
+        <label class="field-label" for="editEntryFat">Жиры (г)</label>
+        <input class="field" id="editEntryFat" type="number" inputmode="decimal" placeholder="Ж" step="0.1" min="0" />
+      </div>
+      <div class="field-group flex-1">
+        <label class="field-label" for="editEntryCarbs">Углеводы (г)</label>
+        <input class="field" id="editEntryCarbs" type="number" inputmode="decimal" placeholder="У" step="0.1" min="0" />
+      </div>
+    </div>
+
+    <div class="recalc-toggle-row">
+      <label class="checkbox-label" for="editEntryAutoRecalc">
+        <input type="checkbox" id="editEntryAutoRecalc" checked />
+        <span>Пересчитывать КБЖУ пропорционально при изменении веса</span>
+      </label>
     </div>
 
     <div class="modal-actions-row">
@@ -298,119 +263,142 @@
   </div>
 </div>
 
-<!-- Settings modal -->
+<!-- DIRECT EDIT WEIGHT BOTTOM SHEET -->
+<div class="overlay" id="editWeightOverlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div>
+        <div class="sheet-title" id="editWeightTitle">Вес за день</div>
+        <div class="sheet-subtitle">Прямое редактирование</div>
+      </div>
+      <button class="text-btn" id="closeEditWeight">✕</button>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="editWeightInput">Вес, кг</label>
+      <input class="field" id="editWeightInput" type="number" inputmode="decimal" placeholder="напр. 85.2" step="0.1" min="20" max="300" />
+    </div>
+
+    <div class="modal-actions-row">
+      <button class="danger-ghost-btn" id="deleteWeightBtn" type="button">Удалить</button>
+      <button class="primary-btn" id="saveWeightBtn" type="button">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- DIRECT EDIT STEPS BOTTOM SHEET -->
+<div class="overlay" id="editStepsOverlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div>
+        <div class="sheet-title" id="editStepsTitle">Шаги за день</div>
+        <div class="sheet-subtitle">Прямое редактирование</div>
+      </div>
+      <button class="text-btn" id="closeEditSteps">✕</button>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="editStepsInput">Количество шагов</label>
+      <input class="field" id="editStepsInput" type="number" inputmode="numeric" placeholder="напр. 8420" min="0" step="1" />
+    </div>
+
+    <div class="modal-actions-row">
+      <button class="danger-ghost-btn" id="resetStepsBtn" type="button">Сбросить</button>
+      <button class="primary-btn" id="saveStepsBtn" type="button">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL (READ-ONLY GOALS + CHAT GUIDANCE) -->
 <div class="overlay" id="settingsOverlay">
   <div class="sheet">
     <div class="sheet-header">
-      <span>Настройки</span>
+      <div class="sheet-title">Настройки</div>
       <button class="text-btn" id="closeSettings">✕</button>
     </div>
 
-    <div class="section-label">Дневная норма калорий и БЖУ</div>
-    <div class="row">
-      <input class="field" id="sGoalKcal" type="number" placeholder="Ккал" />
-    </div>
-    <div class="row">
-      <input class="field" id="sGoalProtein" type="number" placeholder="Белки г" />
-      <input class="field" id="sGoalFat" type="number" placeholder="Жиры г" />
-      <input class="field" id="sGoalCarbs" type="number" placeholder="Углеводы г" />
+    <div class="section-label">Текущие дневные цели</div>
+    <div class="settings-goals-card">
+      <div class="settings-goal-item">
+        <span class="settings-goal-lbl">Калории</span>
+        <span class="settings-goal-val"><b id="sViewKcal">2000</b> ккал</span>
+      </div>
+      <div class="settings-goal-macros">
+        <div>Белки: <b id="sViewProtein">120</b> г</div>
+        <div>Жиры: <b id="sViewFat">65</b> г</div>
+        <div>Углеводы: <b id="sViewCarbs">250</b> г</div>
+      </div>
+      <div class="settings-goal-item" style="margin-top: 8px;">
+        <span class="settings-goal-lbl">Шаги</span>
+        <span class="settings-goal-val"><b id="sViewSteps">10 000</b></span>
+      </div>
     </div>
 
-    <div class="section-label">Дневная норма шагов</div>
-    <div class="row">
-      <input class="field" id="sGoalSteps" type="number" placeholder="Шаги (напр. 10000)" />
+    <div class="settings-chat-hint">
+      💡 <b>Как изменить норму:</b> Напишите ассистенту в чате (например, «Поставь норму 2200 ккал» или «Хочу белки 130г»). Ассистент создаст карточку подтверждения.
     </div>
 
-    <div class="section-label">ИИ-помощник (распознавание фото)</div>
+    <div class="section-label">Справочник</div>
+    <button class="topbar-btn" id="openProductsFromSettings" type="button" style="width: 100%; justify-content: center; padding: 12px; margin-bottom: 16px;">
+      📖 Открыть базу продуктов
+    </button>
+
+    <div class="section-label">ИИ-помощник</div>
     <div class="ai-provider-info" id="aiProviderInfo">—</div>
-
-    <button class="primary-btn" id="saveSettings">Сохранить</button>
   </div>
 </div>
 
-<!-- Add/Edit steps modal -->
-<div class="overlay" id="stepsOverlay">
-  <div class="sheet">
+<!-- PRODUCTS CATALOG MODAL (VIEW & EDIT ONLY) -->
+<div class="overlay" id="productsOverlay">
+  <div class="sheet sheet-wide">
     <div class="sheet-header">
-      <span id="stepsSheetTitle">Запись шагов</span>
-      <button class="text-btn" id="closeSteps">✕</button>
+      <div class="sheet-title">База продуктов (справочник)</div>
+      <button class="text-btn" id="closeProductsSheet">✕</button>
     </div>
-
-    <input class="field" id="stDate" type="date" />
-    <input class="field" id="stSteps" type="number" inputmode="numeric" placeholder="Количество шагов за день" />
-
-    <div class="quick-steps-row">
-      <button type="button" class="quick-step-btn" data-add="1000">+1 000</button>
-      <button type="button" class="quick-step-btn" data-add="3000">+3 000</button>
-      <button type="button" class="quick-step-btn" data-add="5000">+5 000</button>
-      <button type="button" class="quick-step-btn" data-add="10000">+10 000</button>
+    <div class="products-subhint">
+      Новые продукты добавляются через фото упаковки в чате. Здесь доступен просмотр и редактирование сохранённых продуктов.
     </div>
-
-    <div class="steps-preview-meta" id="stPreviewMeta">
-      ~0.0 км · ~0 ккал
-    </div>
-
-    <div class="row" id="stCustomRow">
-      <input class="field" id="stDist" type="number" inputmode="decimal" step="0.1" placeholder="Дистанция, км (авто)" />
-      <input class="field" id="stKcal" type="number" inputmode="decimal" placeholder="Ккал сожжено (авто)" />
-    </div>
-
-    <div class="modal-actions-row">
-      <button class="danger-ghost-btn" id="deleteStepsBtn" type="button" hidden>Удалить</button>
-      <button class="primary-btn" id="saveSteps" type="button">Сохранить шаги</button>
-    </div>
+    <input class="field products-search" id="productsSearch" placeholder="Поиск продукта…" autocomplete="off" />
+    <div id="productsList"></div>
   </div>
 </div>
 
-<!-- Add/Edit weight modal -->
-<div class="overlay" id="weightOverlay">
+<!-- EDIT PRODUCT MODAL -->
+<div class="overlay" id="editProductOverlay">
   <div class="sheet">
     <div class="sheet-header">
-      <span id="weightSheetTitle">Замер веса</span>
-      <button class="text-btn" id="closeWeight">✕</button>
+      <span class="sheet-title">Редактировать продукт</span>
+      <button class="text-btn" id="closeEditProduct">✕</button>
     </div>
 
-    <input class="field" id="wDate" type="date" />
-    <input class="field" id="wWeight" type="number" inputmode="decimal" step="0.1" placeholder="Вес, кг" />
-
-    <button class="photo-btn" id="wPhotoBtn" type="button">📷 Добавить фото</button>
-    <input type="file" id="wPhotoInput" accept="image/*" capture="environment" hidden />
-    <div class="weight-photo-preview-wrap" id="wPhotoWrap" hidden>
-      <img id="wPhotoPreview" class="weight-photo-preview" />
-      <button class="photo-remove-btn" id="wPhotoRemove" type="button" title="Удалить фото">✕</button>
+    <div class="field-group">
+      <label class="field-label" for="pName">Название продукта</label>
+      <input class="field" id="pName" placeholder="Название" autocomplete="off" />
     </div>
 
-    <div class="modal-actions-row">
-      <button class="danger-ghost-btn" id="deleteWeightBtn" type="button" hidden>Удалить</button>
-      <button class="primary-btn" id="saveWeight" type="button">Сохранить</button>
+    <div class="divider">на 100 грамм</div>
+
+    <div class="field-group">
+      <label class="field-label" for="pKcal">Ккал на 100г</label>
+      <input class="field" id="pKcal" type="number" inputmode="decimal" placeholder="Ккал на 100г" />
     </div>
-  </div>
-</div>
-
-<!-- Add/Edit product modal -->
-<div class="overlay" id="productOverlay">
-  <div class="sheet">
-    <div class="sheet-header">
-      <span id="productSheetTitle">Новый продукт</span>
-      <button class="text-btn" id="closeProduct">✕</button>
-    </div>
-
-    <button class="photo-btn" id="productPhotoBtn" type="button">📷 Распознать упаковку</button>
-    <input type="file" id="productPhotoInput" accept="image/*" capture="environment" hidden />
-    <div id="productAiStatus" class="ai-status" hidden></div>
-
-    <div class="divider">данные на 100 г</div>
-
-    <input class="field" id="pName" placeholder="Название" autocomplete="off" />
-    <input class="field" id="pKcal" type="number" inputmode="decimal" placeholder="Ккал на 100г" />
     <div class="row">
-      <input class="field" id="pProtein" type="number" inputmode="decimal" placeholder="Белки" />
-      <input class="field" id="pFat" type="number" inputmode="decimal" placeholder="Жиры" />
-      <input class="field" id="pCarbs" type="number" inputmode="decimal" placeholder="Углеводы" />
+      <div class="field-group flex-1">
+        <label class="field-label" for="pProtein">Белки (г)</label>
+        <input class="field" id="pProtein" type="number" inputmode="decimal" placeholder="Белки" />
+      </div>
+      <div class="field-group flex-1">
+        <label class="field-label" for="pFat">Жиры (г)</label>
+        <input class="field" id="pFat" type="number" inputmode="decimal" placeholder="Жиры" />
+      </div>
+      <div class="field-group flex-1">
+        <label class="field-label" for="pCarbs">Углеводы (г)</label>
+        <input class="field" id="pCarbs" type="number" inputmode="decimal" placeholder="Углеводы" />
+      </div>
     </div>
     <div class="modal-actions-row">
-      <button class="danger-ghost-btn" id="deleteProductBtn" type="button" hidden>Удалить</button>
-      <button class="primary-btn" id="saveProduct" type="button">Сохранить продукт</button>
+      <button class="danger-ghost-btn" id="deleteProductBtn" type="button">Удалить</button>
+      <button class="primary-btn" id="saveProduct" type="button">Сохранить</button>
     </div>
   </div>
 </div>
