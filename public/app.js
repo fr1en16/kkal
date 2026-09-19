@@ -1584,6 +1584,18 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tabBtnChat').onclick = () => setDayTab('chat');
   document.getElementById('tabBtnMeals').onclick = () => setDayTab('meals');
 
+  // Keep bottom padding in sync with the sticky bar's real height
+  // (it grows when the backlog banner or photo previews appear, so a
+  // fixed 90px padding lets it cover the last chat messages).
+  const stickyBar = document.getElementById('stickyBottomBar');
+  if (stickyBar && window.ResizeObserver) {
+    const syncStickyBarHeight = () => {
+      document.documentElement.style.setProperty('--sticky-bar-height', `${stickyBar.offsetHeight}px`);
+    };
+    new ResizeObserver(syncStickyBarHeight).observe(stickyBar);
+    syncStickyBarHeight();
+  }
+
   // Dynamics toggle button
   const toggleDynBtn = document.getElementById('toggleDynamicsBtn');
   if (toggleDynBtn) {
