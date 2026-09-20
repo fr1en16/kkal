@@ -8,6 +8,7 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@phosphor-icons/web": "^2.1.2",
     "@vercel/blob": "^2.8.0",
     "express": "^4.19.2",
     "multer": "^2.0.0",

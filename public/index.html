@@ -6,6 +6,8 @@
 <title>kkal</title>
 <link rel="icon" type="image/webp" href="favicon.webp" />
 <link rel="apple-touch-icon" href="apple-touch-icon.webp" />
+<link rel="stylesheet" href="icons/regular/style.css" />
+<link rel="stylesheet" href="icons/bold/style.css" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -13,29 +15,29 @@
 <div class="app-layout">
 
   <header class="topbar">
-    <div class="topbar-brand" id="brandBtn" role="button" title="На главную">
-      <span class="logo-icon">⚡</span>
+    <div class="topbar-brand" id="brandBtn" role="button" tabindex="0" title="На главную">
+      <img class="logo-icon" src="favicon.webp" alt="" />
       <span class="logo-title">kkal</span>
     </div>
 
     <!-- Date navigation for Day View -->
     <div class="topbar-date" id="topbarDate">
-      <button class="icon-btn-date" id="prevDay" title="Предыдущий день">‹</button>
+      <button class="icon-btn-date" id="prevDay" title="Предыдущий день" aria-label="Предыдущий день"><i class="ph ph-caret-left" aria-hidden="true"></i></button>
       <div class="date" id="dateLabel" style="cursor: pointer;" title="Нажмите для выбора даты">Сегодня</div>
       <input type="date" id="datePickerInput" style="position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;" />
-      <button class="icon-btn-date" id="nextDay" title="Следующий день">›</button>
+      <button class="icon-btn-date" id="nextDay" title="Следующий день" aria-label="Следующий день"><i class="ph ph-caret-right" aria-hidden="true"></i></button>
       <button class="today-btn" id="todayBtn" title="Перейти на сегодня" hidden>Сегодня</button>
     </div>
 
     <!-- History navigation header (shown when on history view) -->
     <div class="topbar-history-title" id="historyTitle" hidden>
-      <button class="icon-btn" id="backToDayBtn" title="Вернуться в день">‹</button>
+      <button class="icon-btn" id="backToDayBtn" title="Вернуться в день" aria-label="Вернуться в день"><i class="ph ph-caret-left" aria-hidden="true"></i></button>
       <span>История</span>
     </div>
 
     <div class="topbar-actions">
-      <button class="icon-btn history-nav-btn" id="toggleHistoryBtn" title="История по дням">🗓</button>
-      <button class="icon-btn settings-btn" id="openSettings" title="Настройки">⚙</button>
+      <button class="icon-btn history-nav-btn" id="toggleHistoryBtn" title="История по дням" aria-label="История по дням"><i class="ph ph-calendar-blank" aria-hidden="true"></i></button>
+      <button class="icon-btn settings-btn" id="openSettings" title="Настройки" aria-label="Настройки"><i class="ph ph-gear-six" aria-hidden="true"></i></button>
     </div>
   </header>
 
@@ -54,39 +56,50 @@
           <div class="kcal-left" id="kcalLeft">Осталось 0 ккал</div>
         </div>
 
-        <div class="macros-grid">
-          <div class="macro-pill macro-protein">
-            <span class="macro-title">Белки</span>
-            <span class="macro-val"><b id="pEaten">0</b>/<span id="pGoal">0</span>г</span>
-          </div>
-          <div class="macro-pill macro-fat">
-            <span class="macro-title">Жиры</span>
-            <span class="macro-val"><b id="fEaten">0</b>/<span id="fGoal">0</span>г</span>
-          </div>
-          <div class="macro-pill macro-carbs">
-            <span class="macro-title">Углеводы</span>
-            <span class="macro-val"><b id="cEaten">0</b>/<span id="cGoal">0</span>г</span>
-          </div>
-        </div>
       </div>
 
-      <div class="bar"><div class="bar-fill" id="kcalBar"></div></div>
+      <div class="calorie-progress-row">
+        <div class="bar"><div class="bar-fill" id="kcalBar"></div></div>
+        <span class="calorie-percent" id="kcalPercent">0%</span>
+      </div>
+
+      <div class="macros-grid">
+        <div class="macro-pill macro-protein">
+          <span class="macro-title">Белки</span>
+          <span class="macro-val"><b id="pEaten">0</b>/<span id="pGoal">0</span> г</span>
+          <span class="macro-progress"><span id="pBar"></span></span>
+          <span class="macro-percent" id="pPercent">0%</span>
+        </div>
+        <div class="macro-pill macro-fat">
+          <span class="macro-title">Жиры</span>
+          <span class="macro-val"><b id="fEaten">0</b>/<span id="fGoal">0</span> г</span>
+          <span class="macro-progress"><span id="fBar"></span></span>
+          <span class="macro-percent" id="fPercent">0%</span>
+        </div>
+        <div class="macro-pill macro-carbs">
+          <span class="macro-title">Углеводы</span>
+          <span class="macro-val"><b id="cEaten">0</b>/<span id="cGoal">0</span> г</span>
+          <span class="macro-progress"><span id="cBar"></span></span>
+          <span class="macro-percent" id="cPercent">0%</span>
+        </div>
+      </div>
 
       <!-- INTEGRATED METRICS FOOTER (WEIGHT, STEPS, DYNAMICS) -->
       <div class="summary-footer-row" id="extraMetricsRow">
         <div class="footer-metric clickable" id="extraWeightWrap" role="button" tabindex="0" title="Нажмите для редактирования веса">
-          <span class="extra-emoji">⚖️</span>
-          <span class="extra-val" id="extraWeightVal">не указан</span>
+          <i class="ph ph-barbell" aria-hidden="true"></i>
+          <span class="metric-copy"><span class="metric-label">Вес</span><span class="extra-val" id="extraWeightVal">не указан</span></span>
         </div>
-        <div class="footer-divider" id="extraDivider">·</div>
+        <div class="footer-divider" id="extraDivider"></div>
         <div class="footer-metric clickable" id="extraStepsWrap" role="button" tabindex="0" title="Нажмите для редактирования шагов">
-          <span class="extra-emoji">👟</span>
-          <span class="extra-val" id="extraStepsVal">0 шагов</span>
+          <i class="ph ph-sneaker-move" aria-hidden="true"></i>
+          <span class="metric-copy"><span class="metric-label">Шаги</span><span class="extra-val" id="extraStepsVal">0</span></span>
         </div>
         <div class="footer-spacer"></div>
         <button class="dynamics-toggle-btn" id="toggleDynamicsBtn" type="button" title="Динамика за 14 дней">
+          <i class="ph ph-trend-up" aria-hidden="true"></i>
           <span>Динамика</span>
-          <span class="expand-icon" id="dynamicsExpandIcon">▾</span>
+          <i class="ph ph-caret-right expand-icon" id="dynamicsExpandIcon" aria-hidden="true"></i>
         </button>
       </div>
 
@@ -102,8 +115,8 @@
 
     <!-- DAY TABS (CHAT VS MEALS) -->
     <div class="day-tabs-bar">
-      <button class="day-tab-btn active" id="tabBtnChat" type="button">💬 Диалог</button>
-      <button class="day-tab-btn" id="tabBtnMeals" type="button">📋 Дневник приёмов <span class="badge" id="mealsCountBadge">0</span></button>
+      <button class="day-tab-btn active" id="tabBtnChat" type="button"><span>Ассистент</span><small>Помогает вести дневник питания</small></button>
+      <button class="day-tab-btn journal-link" id="tabBtnMeals" type="button"><i class="ph ph-notebook" aria-hidden="true"></i><span><b id="mealsCountBadge">0</b> записей</span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
     </div>
 
     <!-- TAB PANE: CHAT STREAM -->
@@ -123,14 +136,14 @@
       <div class="backlog-banner" id="backlogBanner" hidden></div>
       <!-- Suggestion chips above input -->
       <div class="suggestion-chips" id="suggestionChips">
-        <button class="chip-btn" type="button" data-fill="Завтрак: ">🍳 Завтрак</button>
-        <button class="chip-btn" type="button" data-fill="Обед: ">🍲 Обед</button>
-        <button class="chip-btn" type="button" data-fill="Ужин: ">🥗 Ужин</button>
-        <button class="chip-btn" type="button" data-fill="Перекус: ">🍎 Перекус</button>
-        <button class="chip-btn" type="button" data-fill="Вес: ">⚖️ Вес</button>
-        <button class="chip-btn" type="button" data-fill="Шаги: ">👟 Шаги</button>
-        <button class="chip-btn" type="button" id="chipPhotoScale">⚖️ Фото весов</button>
-        <button class="chip-btn" type="button" id="chipPhotoDish">📷 Фото тарелки</button>
+        <button class="chip-btn" type="button" data-meal="breakfast" aria-pressed="false"><i class="ph ph-sun-horizon" aria-hidden="true"></i>Завтрак</button>
+        <button class="chip-btn" type="button" data-meal="lunch" aria-pressed="false"><i class="ph ph-bowl-food" aria-hidden="true"></i>Обед</button>
+        <button class="chip-btn" type="button" data-meal="dinner" aria-pressed="false"><i class="ph ph-moon-stars" aria-hidden="true"></i>Ужин</button>
+        <button class="chip-btn" type="button" data-meal="snack" aria-pressed="false"><i class="ph ph-apple-logo" aria-hidden="true"></i>Перекус</button>
+        <button class="chip-btn" type="button" data-fill="Вес: "><i class="ph ph-barbell" aria-hidden="true"></i>Вес</button>
+        <button class="chip-btn" type="button" data-fill="Шаги: "><i class="ph ph-sneaker-move" aria-hidden="true"></i>Шаги</button>
+        <button class="chip-btn chip-secondary" type="button" id="chipPhotoScale"><i class="ph ph-camera" aria-hidden="true"></i>Весы</button>
+        <button class="chip-btn chip-secondary" type="button" id="chipPhotoDish"><i class="ph ph-image" aria-hidden="true"></i>Блюдо</button>
       </div>
 
       <!-- Input box -->
@@ -139,13 +152,14 @@
         
         <div class="chat-input-controls">
           <input type="file" id="chatPhotoInput" accept="image/*" multiple hidden />
-          <button class="chat-tool-btn" id="chatPhotoBtn" type="button" title="Прикрепить фото">📷</button>
-          <button class="chat-tool-btn voice-btn" id="chatVoiceBtn" type="button" title="Голосовой ввод">🎤</button>
+          <button class="chat-tool-btn" id="chatPhotoBtn" type="button" title="Добавить фото" aria-label="Добавить фото"><i class="ph ph-plus" aria-hidden="true"></i></button>
           
           <textarea class="chat-input-field" id="chatText" placeholder="Написать, что съели…" rows="1"></textarea>
 
+          <button class="chat-tool-btn voice-btn" id="chatVoiceBtn" type="button" title="Голосовой ввод" aria-label="Голосовой ввод"><i class="ph ph-microphone" aria-hidden="true"></i></button>
+
           <button class="chat-send-btn" id="chatSend" type="button" title="Отправить">
-            <span class="send-arrow">➤</span>
+            <i class="ph-bold ph-paper-plane-tilt send-arrow" aria-hidden="true"></i>
           </button>
         </div>
 

@@ -15,6 +15,7 @@ let dayData = null;
 let historyData = [];
 let chatPhotoFiles = [];
 let chatSending = false;
+let selectedMealContext = null;
 
 // Direct editing state
 let editingEntry = null;
@@ -145,7 +146,7 @@ function setView(view) {
     historyViewEl.hidden = false;
     topbarDate.hidden = true;
     historyTitle.hidden = false;
-    toggleBtn.textContent = '⚡';
+    toggleBtn.innerHTML = '<i class="ph ph-house" aria-hidden="true"></i>';
     toggleBtn.title = 'Вернуться к сегодняшнему дню';
     loadHistory();
   } else {
@@ -153,7 +154,7 @@ function setView(view) {
     historyViewEl.hidden = true;
     topbarDate.hidden = false;
     historyTitle.hidden = true;
-    toggleBtn.textContent = '🗓';
+    toggleBtn.innerHTML = '<i class="ph ph-calendar-blank" aria-hidden="true"></i>';
     toggleBtn.title = 'История по дням';
     updateInputPlaceholder();
     loadDay(currentDate);
@@ -277,6 +278,22 @@ function renderSummary(entries) {
   bar.style.width = pct + '%';
   bar.style.background = totals.kcal > goal ? '#ef4444' : 'var(--accent)';
 
+  const kcalPercent = document.getElementById('kcalPercent');
+  if (kcalPercent) kcalPercent.textContent = `${Math.round((totals.kcal / goal) * 100)}%`;
+
+  const macroProgress = [
+    ['p', totals.p, Number(settings && settings.goal_protein) || 120],
+    ['f', totals.f, Number(settings && settings.goal_fat) || 65],
+    ['c', totals.c, Number(settings && settings.goal_carbs) || 250],
+  ];
+  for (const [key, value, target] of macroProgress) {
+    const percent = Math.round((value / target) * 100);
+    const percentEl = document.getElementById(`${key}Percent`);
+    const barEl = document.getElementById(`${key}Bar`);
+    if (percentEl) percentEl.textContent = `${percent}%`;
+    if (barEl) barEl.style.width = `${Math.min(100, percent)}%`;
+  }
+
   const left = goal - totals.kcal;
   const leftEl = document.getElementById('kcalLeft');
   leftEl.classList.toggle('over', left < 0);
@@ -312,10 +329,10 @@ function renderExtraMetrics(weightObj, stepsObj) {
   const hasSteps = stepsObj && stepsObj.steps != null && stepsObj.steps > 0;
   if (stepsVal) {
     if (hasSteps) {
-      stepsVal.textContent = `${formatNum(stepsObj.steps)} шагов`;
+      stepsVal.textContent = formatNum(stepsObj.steps);
       stepsVal.classList.remove('extra-val-muted');
     } else {
-      stepsVal.textContent = '0 шагов';
+      stepsVal.textContent = '0';
       stepsVal.classList.add('extra-val-muted');
     }
   }
@@ -573,7 +590,8 @@ async function loadChatMessages(date) {
     if (msgs.length === 0) {
       const hint = document.createElement('div');
       hint.className = 'chat-status';
-      hint.textContent = 'Напишите или пришлите фото того, что съели — я разберу на продукты и добавлю в дневник.';
+      hint.classList.add('chat-empty-state');
+      hint.innerHTML = '<strong>Что вы сегодня ели?</strong><span>Напишите сообщением или добавьте фото — запись сразу появится в журнале.</span>';
       container.appendChild(hint);
       return;
     }
@@ -627,6 +645,14 @@ function renderReceiptCard(items) {
   const card = document.createElement('div');
   card.className = 'receipt-card';
 
+  const saved = items.some((item) => item.id);
+  if (saved) {
+    const savedStatus = document.createElement('div');
+    savedStatus.className = 'receipt-saved-status';
+    savedStatus.innerHTML = '<i class="ph-bold ph-check-circle" aria-hidden="true"></i><span>Добавлено в журнал</span>';
+    card.appendChild(savedStatus);
+  }
+
   for (const item of items) {
     const itemRow = document.createElement('div');
     itemRow.className = 'receipt-item-row';
@@ -637,11 +663,11 @@ function renderReceiptCard(items) {
 
     let badgeText = '';
     if (item.source === 'chat_photo' || item.estimated) {
-      badgeText = '📷 AI фото ~';
+      badgeText = 'По фото · оценка';
     } else if (item.source === 'chat_voice') {
-      badgeText = '🎤 AI голос';
+      badgeText = 'Голосовой ввод';
     } else if (item.source === 'chat_text') {
-      badgeText = '💬 AI текст';
+      badgeText = 'Текстовый ввод';
     }
 
     itemRow.innerHTML = `
@@ -662,14 +688,14 @@ function renderReceiptCard(items) {
       const editBtn = document.createElement('button');
       editBtn.className = 'card-action-btn';
       editBtn.type = 'button';
-      editBtn.innerHTML = '✎ Изменить';
+      editBtn.innerHTML = '<i class="ph ph-pencil-simple" aria-hidden="true"></i> Исправить';
       editBtn.onclick = () => openEditEntrySheet(item);
       actRow.appendChild(editBtn);
 
       const delBtn = document.createElement('button');
       delBtn.className = 'card-action-btn danger';
       delBtn.type = 'button';
-      delBtn.innerHTML = '✕ Отменить';
+      delBtn.innerHTML = '<i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i> Отменить';
       let delTimer = null;
       delBtn.onclick = async () => {
         if (delBtn.dataset.confirming === 'true') {
@@ -682,7 +708,7 @@ function renderReceiptCard(items) {
           delBtn.textContent = 'Точно?';
           delTimer = setTimeout(() => {
             delBtn.dataset.confirming = 'false';
-            delBtn.textContent = '✕ Отменить';
+            delBtn.innerHTML = '<i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i> Отменить';
           }, 2500);
         }
       };
@@ -828,7 +854,7 @@ async function sendChatMessage() {
     const form = new FormData();
     form.append('text', text);
     form.append('date', currentDate);
-    form.append('meal', guessMealByTime());
+    form.append('meal', selectedMealContext || guessMealByTime());
     form.append('is_voice', isRecordingVoice ? 'true' : 'false');
     for (const p of photos) {
       form.append('images', p);
@@ -1545,11 +1571,23 @@ function openLightbox(src) {
 // --------------------------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', () => {
+  const bindKeyboardActivation = (element, action) => {
+    if (!element) return;
+    element.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        action();
+      }
+    });
+  };
+
   // Brand title
-  document.getElementById('brandBtn').onclick = () => {
+  const goHome = () => {
     currentDate = todayStr();
     setView('day');
   };
+  document.getElementById('brandBtn').onclick = goHome;
+  bindKeyboardActivation(document.getElementById('brandBtn'), goHome);
 
   // Day navigation
   document.getElementById('prevDay').onclick = () => {
@@ -1605,7 +1643,26 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  // Suggestion chips
+  // Meal context chips choose where a recognized meal is logged without
+  // polluting the message text with a technical prefix.
+  const mealChips = [...document.querySelectorAll('.chip-btn[data-meal]')];
+  const activateMealChip = (meal) => {
+    selectedMealContext = meal;
+    mealChips.forEach((chip) => {
+      const active = chip.dataset.meal === meal;
+      chip.classList.toggle('selected', active);
+      chip.setAttribute('aria-pressed', String(active));
+    });
+  };
+  activateMealChip(guessMealByTime());
+  mealChips.forEach((btn) => {
+    btn.onclick = () => {
+      activateMealChip(btn.dataset.meal);
+      document.getElementById('chatText').focus();
+    };
+  });
+
+  // Metric shortcuts still seed an explicit command for the assistant.
   document.querySelectorAll('.chip-btn[data-fill]').forEach((btn) => {
     btn.onclick = () => {
       const input = document.getElementById('chatText');
@@ -1644,9 +1701,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Extra metrics (weight & steps direct edit)
   const extraWeightWrap = document.getElementById('extraWeightWrap');
-  if (extraWeightWrap) extraWeightWrap.onclick = openEditWeightSheet;
+  if (extraWeightWrap) {
+    extraWeightWrap.onclick = openEditWeightSheet;
+    bindKeyboardActivation(extraWeightWrap, openEditWeightSheet);
+  }
   const extraStepsWrap = document.getElementById('extraStepsWrap');
-  if (extraStepsWrap) extraStepsWrap.onclick = openEditStepsSheet;
+  if (extraStepsWrap) {
+    extraStepsWrap.onclick = openEditStepsSheet;
+    bindKeyboardActivation(extraStepsWrap, openEditStepsSheet);
+  }
 
   // Weight sheet
   const closeEditWeight = document.getElementById('closeEditWeight');
